@@ -325,53 +325,87 @@ let paths = [];
 let currentPath = [];
 
 // ── INIT ────────────────────────────────────────────────────────────────────
+let docType = 'renewal'; // 'renewal' or 'installment'
+
 async function init() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
+  docType = params.get('type') || 'renewal';
 
   if (!token) {
-    showError('No Signing Token', 'This link appears to be incomplete. Please use the link sent to your WhatsApp.');
+    showError('No Signing Token', 'This link appears to be incomplete. Please use the link sent to you.');
     return;
   }
 
-  // Fetch signing request
-  const { data, error } = await sb
-    .from('signing_requests')
-    .select('*')
-    .eq('token', token)
-    .single();
+  let data, error;
 
-  if (error || !data) {
-    showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
-    return;
+  if (docType === 'installment') {
+    // Fetch from installment_schedules
+    const res = await sb.from('installment_schedules').select('*').eq('signing_token', token).single();
+    data = res.data; error = res.error;
+
+    if (error || !data) {
+      showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
+      return;
+    }
+
+    if (data.status !== 'pending_signature') {
+      if (data.signature_data) {
+        document.getElementById('signedDate').textContent =
+          new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        showScreen('signedState');
+        return;
+      }
+      showError('Link Invalid', 'This agreement has already been processed.');
+      return;
+    }
+
+    // Map installment data to common format
+    signingData = {
+      token: data.signing_token,
+      employer_name: data.emp_name,
+      employer_nric: data.emp_nric,
+      helper_name: data.helper_name,
+      total_amount: data.total_amount,
+      installments: data.installments,
+      ea_personnel: data.ea_personnel,
+      ea_reg_no: data.ea_reg_no,
+      emp_addr: data.emp_addr,
+      emp_phone: data.emp_phone,
+    };
+
+  } else {
+    // Fetch from signing_requests (renewal)
+    const res = await sb.from('signing_requests').select('*').eq('token', token).single();
+    data = res.data; error = res.error;
+
+    if (error || !data) {
+      showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
+      return;
+    }
+
+    if (new Date(data.expires_at) < new Date()) {
+      showError('Link Expired', 'This signing link has expired. Please contact your agency to request a new one.');
+      return;
+    }
+
+    if (data.status === 'signed' && data.signature_image) {
+      document.getElementById('signedDate').textContent =
+        new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      showScreen('signedState');
+      return;
+    }
+
+    if (data.status === 'revoked') {
+      showError('Link Revoked', 'This signing request has been cancelled by your agency.');
+      return;
+    }
+
+    signingData = data;
   }
 
-  // Check expiry
-  if (new Date(data.expires_at) < new Date()) {
-    showError('Link Expired', 'This signing link has expired. Please contact your agency to request a new one.');
-    return;
-  }
-
-  // Check if already signed
-  if (data.status === 'signed' && data.signature_image) {
-    document.getElementById('signedDate').textContent =
-      new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    showScreen('signedState');
-    return;
-  }
-
-  // Check if revoked
-  if (data.status === 'revoked') {
-    showError('Link Revoked', 'This signing request has been cancelled by your agency.');
-    return;
-  }
-
-  // Show form
-  signingData = data;
-  renderForm(data);
+  renderForm(signingData);
   showScreen('formState');
-
-  // Init canvas after it's visible
   setTimeout(initCanvas, 100);
 }
 
@@ -389,15 +423,46 @@ function showError(title, msg) {
 
 function renderForm(d) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  document.getElementById('infoGrid').innerHTML = `
-    <div class="info-card"><label>Helper Name</label><span>${d.helper_name || '—'}</span></div>
-    <div class="info-card"><label>Helper FIN</label><span>${d.helper_fin || '—'}</span></div>
-    <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
-    <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
-    <div class="info-card"><label>Date</label><span>${today}</span></div>
-    <div class="info-card"><label>Document</label><span>WP Renewal Declaration</span></div>`;
 
-  // Enable submit when consent checked
+  if (docType === 'installment') {
+    const installments = d.installments || [];
+    const total = parseFloat(d.total_amount) || 0;
+    let tableHtml = `<div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f1f5f9">
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted)">#</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted)">Amount</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted)">Due Date</th>
+        </tr></thead><tbody>`;
+    installments.forEach(r => {
+      const dt = new Date(r.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+      tableHtml += `<tr><td style="padding:6px 10px;border-top:1px solid var(--border)">${r.no}</td>
+        <td style="padding:6px 10px;border-top:1px solid var(--border);font-weight:600">SGD ${r.amount.toFixed(2)}</td>
+        <td style="padding:6px 10px;border-top:1px solid var(--border)">${dt}</td></tr>`;
+    });
+    tableHtml += `<tr style="background:#f8fafc;font-weight:700">
+      <td style="padding:8px 10px;border-top:2px solid var(--border)">Total</td>
+      <td style="padding:8px 10px;border-top:2px solid var(--border)" colspan="2">SGD ${total.toFixed(2)}</td>
+    </tr></tbody></table></div>`;
+
+    document.getElementById('infoGrid').innerHTML = `
+      <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
+      <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
+      <div class="info-card"><label>Helper Name</label><span>${d.helper_name || '—'}</span></div>
+      <div class="info-card"><label>Total Amount</label><span style="font-weight:700;color:#0e7490">SGD ${total.toFixed(2)}</span></div>
+      <div class="info-card"><label>No. of Installments</label><span>${installments.length}</span></div>
+      <div class="info-card"><label>Document</label><span>Installment Agreement</span></div>
+      <div class="info-card" style="grid-column:span 2">${tableHtml}</div>`;
+  } else {
+    document.getElementById('infoGrid').innerHTML = `
+      <div class="info-card"><label>Helper Name</label><span>${d.helper_name || d.helper_fin || '—'}</span></div>
+      <div class="info-card"><label>Helper FIN</label><span>${d.helper_fin || '—'}</span></div>
+      <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
+      <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
+      <div class="info-card"><label>Date</label><span>${today}</span></div>
+      <div class="info-card"><label>Document</label><span>WP Renewal Declaration</span></div>`;
+  }
+
   document.getElementById('consentCheck').addEventListener('change', function() {
     document.getElementById('submitBtn').disabled = !(this.checked && paths.length > 0);
   });
@@ -529,15 +594,23 @@ async function submitSignature() {
   btn.disabled = true;
   btn.textContent = '⏳ Submitting...';
 
-  const { error } = await sb
-    .from('signing_requests')
-    .update({
+  let error;
+
+  if (docType === 'installment') {
+    const res = await sb.from('installment_schedules').update({
+      signature_data: base64,
+      signed_at: new Date().toISOString(),
+      status: 'active',
+    }).eq('signing_token', signingData.token).eq('status', 'pending_signature');
+    error = res.error;
+  } else {
+    const res = await sb.from('signing_requests').update({
       signature_image: base64,
       signed_at: new Date().toISOString(),
       status: 'signed',
-    })
-    .eq('token', signingData.token)
-    .eq('status', 'pending');
+    }).eq('token', signingData.token).eq('status', 'pending');
+    error = res.error;
+  }
 
   if (error) {
     btn.disabled = false;
@@ -547,8 +620,6 @@ async function submitSignature() {
   }
 
   showScreen('successState');
-
-  // Vibrate on success (mobile)
   if (navigator.vibrate) navigator.vibrate(200);
 }
 
