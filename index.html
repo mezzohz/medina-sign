@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Medina Recruitment – Sign Document</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal: #0D7377;
+    --dark: #0A1628;
+    --cream: #F5F7FA;
+    --white: #FFFFFF;
+    --border: #E2E8F0;
+    --muted: #64748B;
+    --success: #059669;
+    --danger: #DC2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Outfit', sans-serif; background: var(--cream); color: var(--dark); min-height: 100vh; -webkit-text-size-adjust: 100%; }
+
+  .container { max-width: 480px; margin: 0 auto; padding: 0; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, var(--dark) 0%, #1E3A5F 100%);
+    padding: 24px 20px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 20px;
+    background: var(--cream);
+    clip-path: ellipse(55% 100% at 50% 100%);
+  }
+  .brand {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .brand-icon {
+    width: 32px; height: 32px;
+    background: var(--teal);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .brand-name {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .header-sub {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  /* Loading / Error / Success states */
+  .state-screen {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 24px; text-align: center;
+  }
+  .state-icon { font-size: 48px; margin-bottom: 16px; }
+  .state-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .state-sub { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+  .spinner {
+    width: 40px; height: 40px;
+    border: 4px solid var(--border);
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Form */
+  .form-body { flex: 1; padding: 20px; }
+
+  .doc-title {
+    font-size: 15px; font-weight: 700; color: var(--dark);
+    margin-bottom: 4px;
+  }
+  .doc-sub {
+    font-size: 12px; color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 20px;
+  }
+  .info-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .info-card label {
+    display: block;
+    font-size: 9px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 3px;
+  }
+  .info-card span {
+    font-size: 13px; font-weight: 600; color: var(--dark);
+    word-break: break-word;
+  }
+
+  .declaration-box {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.55;
+    color: #333;
+  }
+  .declaration-box h4 { font-size: 12px; margin-bottom: 8px; color: var(--dark); }
+  .declaration-box ol { padding-left: 18px; }
+  .declaration-box li { margin-bottom: 6px; }
+  .declaration-box ul { padding-left: 16px; margin: 4px 0; }
+
+  .sig-section-label {
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .canvas-wrap {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    position: relative;
+    background: var(--white);
+    overflow: hidden;
+    margin-bottom: 8px;
+    touch-action: none;
+  }
+  .canvas-wrap.active { border-color: var(--teal); border-style: solid; }
+  #sigCanvas {
+    width: 100%; height: 200px;
+    cursor: crosshair; touch-action: none;
+    display: block;
+  }
+  .canvas-watermark {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 15px; color: #d4d4d4;
+    pointer-events: none; user-select: none;
+  }
+
+  .canvas-tools {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .canvas-tools button {
+    padding: 6px 16px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--muted);
+  }
+  .canvas-tools button:active { background: #f1f5f9; }
+
+  .consent-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px;
+    background: #fffbeb;
+    border: 1px solid #fbbf24;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .consent-row input[type="checkbox"] {
+    margin-top: 2px;
+    width: 18px; height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--teal);
+  }
+
+  .submit-btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #fff;
+    background: var(--teal);
+    transition: all 0.2s;
+  }
+  .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .submit-btn:active:not(:disabled) { transform: scale(0.98); }
+
+  .powered-by {
+    text-align: center;
+    padding: 16px;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* Success page */
+  .success-check {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: #ecfdf5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">🏠</div>
+      <span class="brand-name">Medina Recruitment</span>
+    </div>
+    <div class="header-sub">Secure Document Signing</div>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loadingState" class="state-screen">
+    <div class="spinner"></div>
+    <div class="state-title">Loading document...</div>
+    <div class="state-sub">Please wait while we fetch your signing request.</div>
+  </div>
+
+  <!-- ERROR -->
+  <div id="errorState" class="state-screen" style="display:none">
+    <div class="state-icon">⚠️</div>
+    <div class="state-title" id="errorTitle">Link Invalid</div>
+    <div class="state-sub" id="errorMsg">This signing link is invalid or has expired. Please contact your agency.</div>
+  </div>
+
+  <!-- ALREADY SIGNED -->
+  <div id="signedState" class="state-screen" style="display:none">
+    <div class="success-check">✅</div>
+    <div class="state-title">Already Signed</div>
+    <div class="state-sub">This document was signed on <span id="signedDate"></span>. No further action is needed.</div>
+  </div>
+
+  <!-- SIGNING FORM -->
+  <div id="formState" style="display:none">
+    <div class="form-body">
+      <div class="doc-title">📝 Renewal Declaration Form</div>
+      <div class="doc-sub">Work Permit Renewal — Ministry of Manpower</div>
+
+      <div class="info-grid" id="infoGrid"></div>
+
+      <div class="declaration-box">
+        <h4>Declaration by the Employer</h4>
+        <ol>
+          <li>I declare that I am fully aware of and shall fulfil my obligations as an employer of a foreign domestic worker under the EFMA and EFMR, including:
+            <ul>
+              <li>Pay salary promptly</li>
+              <li>Pay for upkeep, maintenance and medical treatment</li>
+              <li>Provide acceptable accommodation</li>
+              <li>Comply with all Work Pass Conditions</li>
+            </ul>
+          </li>
+          <li>I have obtained my foreign domestic worker's written consent to continue her employment.</li>
+          <li>I do not have any medical condition(s) that will impair my ability to supervise my foreign domestic worker.</li>
+          <li>I consent to the Government of Singapore to obtain and verify information for assessing my suitability as an employer.</li>
+        </ol>
+      </div>
+
+      <div class="sig-section-label">Your Signature</div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="sigCanvas"></canvas>
+        <div class="canvas-watermark" id="watermark">✍️ Sign here with your finger</div>
+      </div>
+      <div class="canvas-tools">
+        <button onclick="sigClear()">Clear</button>
+        <button onclick="sigUndo()">Undo</button>
+      </div>
+
+      <label class="consent-row">
+        <input type="checkbox" id="consentCheck">
+        <span>I confirm that I have read and understood the declaration above, and I agree to be bound by it. I understand this constitutes a legally binding electronic signature.</span>
+      </label>
+
+      <button class="submit-btn" id="submitBtn" onclick="submitSignature()" disabled>
+        ✍️ Submit Signature
+      </button>
+    </div>
+    <div class="powered-by">Powered by Medina Recruitment CRM</div>
+  </div>
+
+  <!-- SUCCESS -->
+  <div id="successState" class="state-screen" style="display:none">
+    <div class="success-check">✅</div>
+    <div class="state-title">Signed Successfully!</div>
+    <div class="state-sub">Your signature has been recorded. You may close this page.<br><br>Your agency will be notified automatically.</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let signingData = null;
+let canvas, ctx;
+let drawing = false;
+let paths = [];
+let currentPath = [];
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+
+  if (!token) {
+    showError('No Signing Token', 'This link appears to be incomplete. Please use the link sent to your WhatsApp.');
+    return;
+  }
+
+  // Fetch signing request
+  const { data, error } = await sb
+    .from('signing_requests')
+    .select('*')
+    .eq('token', token)
+    .single();
+
+  if (error || !data) {
+    showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
+    return;
+  }
+
+  // Check expiry
+  if (new Date(data.expires_at) < new Date()) {
+    showError('Link Expired', 'This signing link has expired. Please contact your agency to request a new one.');
+    return;
+  }
+
+  // Check if already signed
+  if (data.status === 'signed' && data.signature_image) {
+    document.getElementById('signedDate').textContent =
+      new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    showScreen('signedState');
+    return;
+  }
+
+  // Check if revoked
+  if (data.status === 'revoked') {
+    showError('Link Revoked', 'This signing request has been cancelled by your agency.');
+    return;
+  }
+
+  // Show form
+  signingData = data;
+  renderForm(data);
+  showScreen('formState');
+
+  // Init canvas after it's visible
+  setTimeout(initCanvas, 100);
+}
+
+function showScreen(id) {
+  ['loadingState', 'errorState', 'signedState', 'formState', 'successState'].forEach(s => {
+    document.getElementById(s).style.display = s === id ? '' : 'none';
+  });
+}
+
+function showError(title, msg) {
+  document.getElementById('errorTitle').textContent = title;
+  document.getElementById('errorMsg').textContent = msg;
+  showScreen('errorState');
+}
+
+function renderForm(d) {
+  const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  document.getElementById('infoGrid').innerHTML = `
+    <div class="info-card"><label>Helper Name</label><span>${d.helper_name || '—'}</span></div>
+    <div class="info-card"><label>Helper FIN</label><span>${d.helper_fin || '—'}</span></div>
+    <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
+    <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
+    <div class="info-card"><label>Date</label><span>${today}</span></div>
+    <div class="info-card"><label>Document</label><span>WP Renewal Declaration</span></div>`;
+
+  // Enable submit when consent checked
+  document.getElementById('consentCheck').addEventListener('change', function() {
+    document.getElementById('submitBtn').disabled = !(this.checked && paths.length > 0);
+  });
+}
+
+function maskNric(nric) {
+  if (!nric || nric.length < 5) return nric || '—';
+  return nric[0] + '●●●●' + nric.slice(-4);
+}
+
+// ── CANVAS ──────────────────────────────────────────────────────────────────
+function initCanvas() {
+  canvas = document.getElementById('sigCanvas');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#111';
+
+  canvas.addEventListener('pointerdown', pDown, { passive: false });
+  canvas.addEventListener('pointermove', pMove, { passive: false });
+  canvas.addEventListener('pointerup', pUp);
+  canvas.addEventListener('pointerleave', pUp);
+  canvas.addEventListener('pointercancel', pUp);
+
+  // Prevent scroll while signing
+  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+}
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function pDown(e) {
+  e.preventDefault();
+  drawing = true;
+  canvas.setPointerCapture(e.pointerId);
+  const pos = getPos(e);
+  currentPath = [pos];
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  document.getElementById('watermark').style.display = 'none';
+  document.getElementById('canvasWrap').classList.add('active');
+}
+
+function pMove(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const pos = getPos(e);
+  currentPath.push(pos);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+}
+
+function pUp() {
+  if (!drawing) return;
+  drawing = false;
+  if (currentPath.length > 1) paths.push([...currentPath]);
+  currentPath = [];
+  updateSubmitState();
+}
+
+function sigClear() {
+  paths = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('watermark').style.display = '';
+  document.getElementById('canvasWrap').classList.remove('active');
+  updateSubmitState();
+}
+
+function sigUndo() {
+  paths.pop();
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const path of paths) {
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+  }
+  if (paths.length === 0) {
+    document.getElementById('watermark').style.display = '';
+    document.getElementById('canvasWrap').classList.remove('active');
+  }
+  updateSubmitState();
+}
+
+function updateSubmitState() {
+  const consent = document.getElementById('consentCheck').checked;
+  document.getElementById('submitBtn').disabled = !(consent && paths.length > 0);
+}
+
+function getBase64() {
+  if (paths.length === 0) return null;
+  const tmp = document.createElement('canvas');
+  const r = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  tmp.width = r.width * dpr;
+  tmp.height = r.height * dpr;
+  const c = tmp.getContext('2d');
+  c.scale(dpr, dpr);
+  c.lineWidth = 2.5;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  c.strokeStyle = '#111';
+  for (const path of paths) {
+    c.beginPath();
+    c.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) c.lineTo(path[i].x, path[i].y);
+    c.stroke();
+  }
+  return tmp.toDataURL('image/png').replace('data:image/png;base64,', '');
+}
+
+// ── SUBMIT ──────────────────────────────────────────────────────────────────
+async function submitSignature() {
+  const base64 = getBase64();
+  if (!base64) return;
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Submitting...';
+
+  const { error } = await sb
+    .from('signing_requests')
+    .update({
+      signature_image: base64,
+      signed_at: new Date().toISOString(),
+      status: 'signed',
+    })
+    .eq('token', signingData.token)
+    .eq('status', 'pending');
+
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = '✍️ Submit Signature';
+    alert('Failed to submit signature. Please try again.\n\n' + error.message);
+    return;
+  }
+
+  showScreen('successState');
+
+  // Vibrate on success (mobile)
+  if (navigator.vibrate) navigator.vibrate(200);
+}
+
+// ── GO ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
