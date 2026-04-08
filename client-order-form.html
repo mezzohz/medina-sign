@@ -575,7 +575,48 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     <div class="card-title">Select a Service</div>
     <div class="card-sub">Choose the type of job order you'd like to submit.</div>
 
-    <!-- Group A -->
+    <!-- Group B: Hiring Services (shown first) -->
+    <div class="sec-divider"><span>Hiring Services</span></div>
+    <div class="service-grid" id="groupB">
+
+      <div class="service-tile">
+        <input type="radio" name="service" id="s7" value="New Standard Hiring">
+        <label for="s7"><span class="tile-icon">🌟</span>
+          <span class="tile-text"><strong>New Standard Hiring</strong><span>New placement – local FDW</span></span>
+        </label>
+      </div>
+
+      <div class="service-tile">
+        <input type="radio" name="service" id="s5" value="Direct Hiring">
+        <label for="s5"><span class="tile-icon">🌐</span>
+          <span class="tile-text"><strong>Direct Hiring</strong><span>From overseas, no passport</span></span>
+        </label>
+      </div>
+
+      <div class="service-tile">
+        <input type="radio" name="service" id="s6" value="Direct Hiring with Passport">
+        <label for="s6"><span class="tile-icon">✈️</span>
+          <span class="tile-text"><strong>Direct Hiring w/ Passport</strong><span>From overseas with passport</span></span>
+        </label>
+      </div>
+
+      <div class="service-tile">
+        <input type="radio" name="service" id="s8" value="Replacement Hiring">
+        <label for="s8"><span class="tile-icon">🔁</span>
+          <span class="tile-text"><strong>Replacement Hiring</strong><span>Replace existing FDW</span></span>
+        </label>
+      </div>
+
+      <div class="service-tile">
+        <input type="radio" name="service" id="s9" value="Transfer">
+        <label for="s9"><span class="tile-icon">🔄</span>
+          <span class="tile-text"><strong>Transfer</strong><span>Transfer FDW from another employer</span></span>
+        </label>
+      </div>
+
+    </div>
+
+    <!-- Group A: Renewals & Administrative (shown second) -->
     <div class="sec-divider"><span>Renewals & Administrative</span></div>
     <div class="service-grid" id="groupA">
 
@@ -604,47 +645,6 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         <input type="radio" name="service" id="s4" value="Passport Renewal">
         <label for="s4"><span class="tile-icon">🛂</span>
           <span class="tile-text"><strong>Passport Renewal</strong><span>FDW passport renewal process</span></span>
-        </label>
-      </div>
-
-    </div>
-
-    <!-- Group B -->
-    <div class="sec-divider"><span>Hiring Services</span></div>
-    <div class="service-grid" id="groupB">
-
-      <div class="service-tile">
-        <input type="radio" name="service" id="s5" value="Direct Hiring">
-        <label for="s5"><span class="tile-icon">🌐</span>
-          <span class="tile-text"><strong>Direct Hiring</strong><span>From overseas, no passport</span></span>
-        </label>
-      </div>
-
-      <div class="service-tile">
-        <input type="radio" name="service" id="s6" value="Direct Hiring with Passport">
-        <label for="s6"><span class="tile-icon">✈️</span>
-          <span class="tile-text"><strong>Direct Hiring w/ Passport</strong><span>From overseas with passport</span></span>
-        </label>
-      </div>
-
-      <div class="service-tile">
-        <input type="radio" name="service" id="s7" value="New Standard Hiring">
-        <label for="s7"><span class="tile-icon">🌟</span>
-          <span class="tile-text"><strong>New Standard Hiring</strong><span>New placement – local FDW</span></span>
-        </label>
-      </div>
-
-      <div class="service-tile">
-        <input type="radio" name="service" id="s8" value="Replacement Hiring">
-        <label for="s8"><span class="tile-icon">🔁</span>
-          <span class="tile-text"><strong>Replacement Hiring</strong><span>Replace existing FDW</span></span>
-        </label>
-      </div>
-
-      <div class="service-tile">
-        <input type="radio" name="service" id="s9" value="Transfer">
-        <label for="s9"><span class="tile-icon">🔄</span>
-          <span class="tile-text"><strong>Transfer</strong><span>Transfer FDW from another employer</span></span>
         </label>
       </div>
 
