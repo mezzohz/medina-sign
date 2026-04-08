@@ -1153,7 +1153,7 @@ async function submitOrder() {
       staff_remarks: ''
     };
 
-    const { data: insertedData, error } = await sbClient.from('orders').insert([dbRow]).select();
+    const { data: insertedData, error } = await sbClient.from('orders').insert([dbRow]);
     console.log('Order insert result:', insertedData, error);
     if (error) {
       console.error('Supabase insert error:', error);
