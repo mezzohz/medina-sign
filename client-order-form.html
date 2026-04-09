@@ -686,6 +686,37 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         <input type="email" id="aEmpEmail" placeholder="e.g. name@email.com">
       </div>
 
+      <!-- WP Renewal options – only shown for Work Permit Renewal -->
+      <div id="wpRenewalField" class="hidden">
+        <div class="sec-divider"><span>Work Permit Renewal Details</span></div>
+        <div class="field">
+          <label>Renewal Period <span class="req">*</span></label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" name="wpRenewalPeriod" id="wp1yr" value="1 Year">
+              <label for="wp1yr"><span class="radio-dot"></span> 1 Year</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="wpRenewalPeriod" id="wp2yr" value="2 Years">
+              <label for="wp2yr"><span class="radio-dot"></span> 2 Years</label>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Insurance with Rider? <span class="req">*</span></label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" name="wpInsuranceRider" id="wpRiderYes" value="Yes - Insurance with Rider">
+              <label for="wpRiderYes"><span class="radio-dot"></span> Yes – Include Insurance with Rider</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" name="wpInsuranceRider" id="wpRiderNo" value="No - Standard Insurance Only">
+              <label for="wpRiderNo"><span class="radio-dot"></span> No – Standard Insurance Only</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Insurance type – only shown for Insurance Renewal -->
       <div id="insuranceTypeField" class="hidden">
         <div class="sec-divider"><span>Insurance Type</span></div>
@@ -965,6 +996,8 @@ function goStep2() {
 
   // Show insurance field only for Insurance Renewal
   document.getElementById('insuranceTypeField').classList.toggle('hidden', selectedService !== 'Insurance Renewal');
+  // Show WP renewal options only for Work Permit Renewal
+  document.getElementById('wpRenewalField').classList.toggle('hidden', selectedService !== 'Work Permit Renewal');
 
   document.getElementById('step2Title').textContent = selectedService;
   document.getElementById('step2Sub').textContent = isGroupB
@@ -995,6 +1028,10 @@ function goStep3() {
     if (!document.getElementById('aEmpEmail').value.trim()) { alert('Please enter email address.'); return; }
     if (selectedService === 'Insurance Renewal' && !document.querySelector('input[name="insuranceType"]:checked')) {
       alert('Please select an insurance type.'); return;
+    }
+    if (selectedService === 'Work Permit Renewal') {
+      if (!document.querySelector('input[name="wpRenewalPeriod"]:checked')) { alert('Please select a renewal period (1 Year or 2 Years).'); return; }
+      if (!document.querySelector('input[name="wpInsuranceRider"]:checked')) { alert('Please indicate whether you want insurance with rider.'); return; }
     }
   }
 
@@ -1035,6 +1072,12 @@ function buildReview() {
       const it = document.querySelector('input[name="insuranceType"]:checked');
       rows.push(['Insurance Plan', it ? it.value : '—']);
     }
+    if (selectedService === 'Work Permit Renewal') {
+      const wp = document.querySelector('input[name="wpRenewalPeriod"]:checked');
+      const ri = document.querySelector('input[name="wpInsuranceRider"]:checked');
+      rows.push(['Renewal Period', wp ? wp.value : '—']);
+      rows.push(['Insurance with Rider', ri ? ri.value : '—']);
+    }
   }
 
   const remarks = document.getElementById('remarks').value;
@@ -1070,6 +1113,8 @@ async function submitOrder() {
     service: selectedService,
     hiringType: ht ? ht.value : '',
     insuranceType: it ? it.value : '',
+    wpRenewalPeriod: document.querySelector('input[name="wpRenewalPeriod"]:checked')?.value || '',
+    wpInsuranceRider: document.querySelector('input[name="wpInsuranceRider"]:checked')?.value || '',
     // Group A fields
     empName: isGroupB ? document.getElementById('bEmpName').value : document.getElementById('aEmpName').value,
     empNric: isGroupB ? document.getElementById('bEmpNric').value : document.getElementById('aEmpNric').value,
@@ -1141,7 +1186,8 @@ async function submitOrder() {
       sponsor_spouse_name: order.sponsorSpouseName || '',
       sponsor_spouse_nric: order.sponsorSpouseNric || '',
       sponsor_spouse_dob: order.sponsorSpouseDob || '',
-      remarks: order.remarks || '',
+      remarks: [order.remarks, order.wpRenewalPeriod ? 'WP Renewal: ' + order.wpRenewalPeriod : '', order.wpInsuranceRider ? 'Insurance: ' + order.wpInsuranceRider : '', order.insuranceType ? 'Insurance Plan: ' + order.insuranceType : ''].filter(Boolean).join(' | ') || '',
+      insurance_type: order.insuranceType || order.wpInsuranceRider || '',
       status: 'Pending',
       assigned_to: '',
       helper_name: '',
