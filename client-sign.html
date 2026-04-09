@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Medina Recruitment – Sign Document</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root {
     --teal: #0D7377;
@@ -336,8 +338,8 @@ async function init() {
 
   let data, error;
 
-  if (docType === 'booking_doc' || docType === 'booking_doc_fdw') {
-    // Fetch from signing_requests (booking document — employer or FDW)
+  if (docType === 'booking_doc' || docType === 'booking_doc_fdw' || docType === 'ec_signing') {
+    // Fetch from signing_requests (booking document — employer or FDW or EC)
     const res = await sb.from('signing_requests').select('*').eq('token', token).single();
     data = res.data; error = res.error;
     if (error || !data) { showError('Link Invalid', 'This signing link is invalid or not found.'); return; }
@@ -439,6 +441,49 @@ function showError(title, msg) {
 
 async function renderForm(d) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  if (docType === 'ec_signing') {
+    // EC: render PDF pages as images using pdf.js
+    document.getElementById('infoGrid').innerHTML = `
+      <div class="info-card" style="grid-column:span 2;text-align:center">
+        <label>Document</label><span style="font-weight:700;color:var(--teal)">Employment Contract</span>
+      </div>
+      <div class="info-card"><label>Employer</label><span>${d.employer_name || '—'}</span></div>
+      <div class="info-card"><label>Helper</label><span>${d.helper_name || '—'}</span></div>
+      <div class="info-card" style="grid-column:span 2">
+        <div id="ecPdfContainer" style="max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:#fff;margin-top:8px;text-align:center;padding:8px">
+          <div style="color:var(--muted);padding:20px">Loading contract pages...</div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center">Scroll to review all pages before signing</div>
+      </div>`;
+    // Render PDF pages using pdf.js
+    if (d.document_html_url) {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const resp = await fetch(d.document_html_url);
+        const pdfData = await resp.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        const container = document.getElementById('ecPdfContainer');
+        container.innerHTML = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = '100%';
+          canvas.style.marginBottom = '8px';
+          canvas.style.borderBottom = i < pdf.numPages ? '2px solid #e2e8f0' : 'none';
+          container.appendChild(canvas);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+      } catch (e) {
+        document.getElementById('ecPdfContainer').innerHTML = '<div style="color:var(--danger);padding:20px">Error loading contract: ' + e.message + '</div>';
+      }
+    }
+    return;
+  }
 
   if (docType === 'booking_doc' || docType === 'booking_doc_fdw') {
     // Show full document in scrollable container
@@ -661,6 +706,56 @@ async function submitSignature() {
       signed_at: new Date().toISOString(),
       status: 'active',
     }).eq('signing_token', signingData.token).eq('status', 'pending_signature');
+    error = res.error;
+  } else if (docType === 'ec_signing') {
+    // EC: overlay employer signature on the PDF and save final copy
+    btn.textContent = '⏳ Overlaying signature...';
+    try {
+      // Fetch the EA-signed PDF
+      const pdfResp = await fetch(signingData.document_html_url);
+      const pdfData = await pdfResp.arrayBuffer();
+      const { PDFDocument } = PDFLib;
+      const pdfDoc = await PDFDocument.load(pdfData);
+
+      // Embed employer signature
+      const sigBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const sigImg = await pdfDoc.embedPng(sigBytes);
+      const sigW = 120;
+      const sigH = sigW * (sigImg.height / sigImg.width);
+
+      // Page 2 (index 1): above employer name at y=579
+      const page2 = pdfDoc.getPage(1);
+      page2.drawImage(sigImg, { x: 121, y: 842 - 579, width: sigW, height: sigH });
+
+      // Page 4 (index 3): above employer name at y=615
+      const page4 = pdfDoc.getPage(3);
+      page4.drawImage(sigImg, { x: 121, y: 842 - 615, width: sigW, height: sigH });
+
+      const finalBytes = await pdfDoc.save();
+
+      // Upload final signed PDF
+      btn.textContent = '⏳ Saving document...';
+      const workerName = (signingData.helper_name || 'Unknown').toUpperCase();
+      const filename = `documents/EC ${workerName}.pdf`;
+      const uploadUrl = 'https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/' + encodeURIComponent(filename.replace('documents/', ''));
+
+      // Use anon key for upload (storage has public write for documents bucket)
+      const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
+      await fetch('https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/EC ' + encodeURIComponent(workerName) + '.pdf', {
+        method: 'PUT',
+        headers: { 'apikey': anonKey, 'Authorization': 'Bearer ' + anonKey, 'Content-Type': 'application/pdf' },
+        body: new Blob([finalBytes], { type: 'application/pdf' })
+      });
+    } catch (e) {
+      console.error('EC overlay error:', e);
+    }
+
+    // Update signing request
+    const res = await sb.from('signing_requests').update({
+      signature_image: base64,
+      signed_at: new Date().toISOString(),
+      status: 'signed',
+    }).eq('token', signingData.token).eq('status', 'pending');
     error = res.error;
   } else if (docType === 'booking_doc' || docType === 'booking_doc_fdw') {
     const res = await sb.from('signing_requests').update({
