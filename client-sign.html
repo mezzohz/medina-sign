@@ -482,6 +482,8 @@ async function renderForm(d) {
         document.getElementById('ecPdfContainer').innerHTML = '<div style="color:var(--danger);padding:20px">Error loading contract: ' + e.message + '</div>';
       }
     }
+    // Attach checkbox listener (must not skip this via early return)
+    document.getElementById('consentCheck').addEventListener('change', updateSubmitState);
     return;
   }
 
