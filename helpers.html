@@ -275,7 +275,7 @@ function openProfile(id) {
             <div><div class="label">Place of Birth</div><div class="value">${h.pob || '—'}</div></div>
             <div><div class="label">Religion</div><div class="value">${h.religion || '—'}</div></div>
             <div><div class="label">Marital Status</div><div class="value">${h.marital_status || '—'}</div></div>
-            <div><div class="label">Height / Weight</div><div class="value">${h.height || '—'}cm / ${h.weight || '—'}kg</div></div>
+            <div><div class="label">Height / Weight</div><div class="value">${String(h.height||'—').replace(/cm$/i,'')}cm / ${String(h.weight||'—').replace(/kg$/i,'')}kg</div></div>
             <div><div class="label">Education</div><div class="value">${h.education || '—'}</div></div>
             <div><div class="label">Children</div><div class="value">${h.children || 0} ${h.children_ages ? '('+h.children_ages+')' : ''}</div></div>
             <div><div class="label">Siblings</div><div class="value">${h.siblings || '—'}</div></div>
