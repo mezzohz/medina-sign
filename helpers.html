@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medina Recruitment — Helper Profiles</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --teal:#0D7377; --dark:#0A1628; --cream:#F5F7FA; --white:#fff; --border:#E2E8F0; --muted:#64748B; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Outfit',sans-serif; background:var(--cream); color:var(--dark); min-height:100vh; }
+
+  /* LOGIN */
+  .login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; }
+  .login-card { background:var(--white); border-radius:20px; padding:40px 32px; max-width:400px; width:100%; box-shadow:0 8px 40px rgba(0,0,0,0.08); text-align:center; }
+  .login-card h1 { font-family:'Playfair Display',serif; font-size:24px; margin-bottom:4px; }
+  .login-card .sub { color:var(--muted); font-size:13px; margin-bottom:24px; }
+  .login-card input { width:100%; padding:14px 16px; border:1.5px solid var(--border); border-radius:10px; font-family:'Outfit',sans-serif; font-size:15px; margin-bottom:14px; }
+  .login-card input:focus { outline:none; border-color:var(--teal); }
+  .login-card button { width:100%; padding:14px; background:var(--teal); color:var(--white); border:none; border-radius:10px; font-family:'Outfit',sans-serif; font-size:15px; font-weight:600; cursor:pointer; }
+  .login-card button:disabled { opacity:0.6; }
+  .login-card .err { color:#dc2626; font-size:13px; margin-top:8px; display:none; }
+
+  /* HEADER */
+  .header { background:linear-gradient(135deg,var(--dark) 0%,#1E3A5F 100%); padding:20px 24px; color:var(--white); }
+  .header h1 { font-family:'Playfair Display',serif; font-size:22px; }
+  .header .sub { color:#94a3b8; font-size:12px; margin-top:2px; }
+
+  /* FILTERS */
+  .filters { padding:16px 20px; background:var(--white); border-bottom:1px solid var(--border); display:flex; gap:10px; flex-wrap:wrap; align-items:center; position:sticky; top:0; z-index:10; }
+  .filters input, .filters select { padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; }
+  .filters input { flex:1; min-width:200px; }
+  .filters select { min-width:140px; }
+  .filters .count { font-size:12px; color:var(--muted); font-weight:600; margin-left:auto; }
+
+  /* GRID */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; padding:20px; }
+  .card { background:var(--white); border-radius:16px; overflow:hidden; border:1.5px solid var(--border); transition:all 0.2s; cursor:pointer; }
+  .card:hover { border-color:var(--teal); box-shadow:0 4px 20px rgba(0,0,0,0.08); transform:translateY(-2px); }
+  .card-photo { width:100%; aspect-ratio:3/4; object-fit:cover; background:#e2e8f0; }
+  .card-body { padding:14px 16px; }
+  .card-name { font-weight:700; font-size:15px; margin-bottom:2px; }
+  .card-meta { font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .card-meta span { background:#f1f5f9; padding:2px 8px; border-radius:12px; }
+  .card-salary { font-size:18px; font-weight:700; color:var(--teal); }
+  .card-status { display:inline-block; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; text-transform:uppercase; }
+  .card-status.available { background:#ecfdf5; color:#059669; }
+  .card-status.selected { background:#e0f2fe; color:#0369a1; }
+  .card-status.deployed { background:#faf5ff; color:#7c3aed; }
+
+  /* PROFILE DETAIL */
+  .profile-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
+  .profile-card { background:var(--white); border-radius:20px; max-width:700px; width:100%; margin:20px auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+  .profile-header { display:flex; gap:20px; padding:24px; border-bottom:1px solid var(--border); }
+  .profile-photo { width:140px; height:180px; border-radius:12px; object-fit:cover; border:2px solid var(--border); flex-shrink:0; }
+  .profile-info h2 { font-family:'Playfair Display',serif; font-size:22px; margin-bottom:4px; }
+  .profile-info .code { color:var(--teal); font-weight:600; font-size:13px; }
+  .profile-body { padding:20px 24px; }
+  .profile-section { margin-bottom:16px; }
+  .profile-section-title { font-weight:700; font-size:12px; color:var(--teal); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; padding-bottom:4px; border-bottom:2px solid #f0fdfa; }
+  .profile-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; font-size:13px; }
+  .profile-grid .label { color:var(--muted); font-size:11px; }
+  .profile-grid .value { font-weight:600; margin-bottom:4px; }
+  .profile-skills { display:flex; flex-wrap:wrap; gap:6px; }
+  .profile-skills .skill { background:#f0fdfa; border:1px solid #99f6e4; padding:4px 10px; border-radius:8px; font-size:11px; font-weight:600; color:var(--teal); }
+  .profile-close { position:absolute; top:16px; right:16px; background:none; border:none; font-size:24px; cursor:pointer; color:var(--muted); }
+  .profile-actions { padding:16px 24px; border-top:1px solid var(--border); display:flex; gap:10px; }
+  .profile-actions button { flex:1; padding:12px; border-radius:10px; font-family:'Outfit',sans-serif; font-size:14px; font-weight:600; cursor:pointer; border:none; }
+  .btn-enquire { background:var(--teal); color:var(--white); }
+  .btn-download { background:#f1f5f9; color:var(--dark); }
+
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty .emoji { font-size:48px; margin-bottom:12px; }
+
+  @media (max-width:600px) {
+    .grid { grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; padding:12px; }
+    .profile-header { flex-direction:column; align-items:center; text-align:center; }
+    .profile-photo { width:120px; height:160px; }
+    .profile-grid { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="login-wrap">
+  <div class="login-card">
+    <div style="font-size:32px;margin-bottom:12px">🏠</div>
+    <h1>Medina Recruitment</h1>
+    <div class="sub">Helper Profiles — Enter your access password</div>
+    <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')validateAccess()">
+    <button id="loginBtn" onclick="validateAccess()">View Helpers</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- MAIN PORTAL -->
+<div id="portal" style="display:none">
+  <div class="header">
+    <h1>🏠 Medina Recruitment</h1>
+    <div class="sub">Available Helpers — Browse and enquire</div>
+  </div>
+  <div class="filters">
+    <input type="text" id="searchInput" placeholder="Search by name, code, nationality..." oninput="renderHelpers()">
+    <select id="filterNationality" onchange="renderHelpers()">
+      <option value="">All Nationalities</option>
+      <option value="Indonesian">Indonesian</option>
+      <option value="Filipino">Filipino</option>
+      <option value="Myanmar">Myanmar</option>
+      <option value="Indian">Indian</option>
+    </select>
+    <select id="filterExp" onchange="renderHelpers()">
+      <option value="">All Experience</option>
+      <option value="sg">Has SG Experience</option>
+      <option value="fresh">Fresh / No SG Exp</option>
+    </select>
+    <div class="count" id="resultCount"></div>
+  </div>
+  <div class="grid" id="helperGrid"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let allHelpers = [];
+let portalToken = null;
+
+// Get token from URL
+const params = new URLSearchParams(window.location.search);
+const token = params.get('token');
+
+if (!token) {
+  document.getElementById('loginErr').textContent = 'Invalid link — no access token provided.';
+  document.getElementById('loginErr').style.display = 'block';
+  document.getElementById('pwInput').style.display = 'none';
+  document.getElementById('loginBtn').style.display = 'none';
+}
+
+async function validateAccess() {
+  const pw = document.getElementById('pwInput').value.trim();
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  if (!pw) { err.textContent = 'Please enter the password.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  err.style.display = 'none';
+
+  try {
+    const { data, error } = await sb.from('helper_portal_tokens')
+      .select('*')
+      .eq('token', token)
+      .gte('expires_at', new Date().toISOString())
+      .limit(1);
+    if (error) throw error;
+    if (!data?.length) { err.textContent = 'Link expired or invalid.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'View Helpers'; return; }
+
+    const record = data[0];
+    // Simple password check (stored as plain text for simplicity — not handling sensitive data)
+    if (record.password_hash !== pw) {
+      err.textContent = 'Incorrect password.'; err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'View Helpers'; return;
+    }
+
+    portalToken = record;
+    await loadHelpers();
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('portal').style.display = 'block';
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'View Helpers';
+  }
+}
+
+async function loadHelpers() {
+  const { data, error } = await sb.from('helpers')
+    .select('*')
+    .in('availability_status', ['Available', 'Selected'])
+    .order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  allHelpers = data || [];
+  renderHelpers();
+}
+
+function renderHelpers() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const nat = document.getElementById('filterNationality')?.value || '';
+  const exp = document.getElementById('filterExp')?.value || '';
+
+  let filtered = allHelpers.filter(h => {
+    if (search && !(h.full_name||'').toLowerCase().includes(search) && !(h.fdw_code||'').toLowerCase().includes(search) && !(h.nationality||'').toLowerCase().includes(search)) return false;
+    if (nat && (h.nationality||'').toLowerCase() !== nat.toLowerCase()) return false;
+    if (exp === 'sg' && !h.exp_sg) return false;
+    if (exp === 'fresh' && h.exp_sg) return false;
+    return true;
+  });
+
+  document.getElementById('resultCount').textContent = filtered.length + ' helper' + (filtered.length !== 1 ? 's' : '') + ' found';
+
+  if (!filtered.length) {
+    document.getElementById('helperGrid').innerHTML = '<div class="empty"><div class="emoji">👩</div><h3>No helpers found</h3><p>Try a different search or filter.</p></div>';
+    return;
+  }
+
+  document.getElementById('helperGrid').innerHTML = filtered.map(h => {
+    const age = h.dob ? Math.floor((Date.now() - new Date(h.dob)) / 31557600000) : '—';
+    const statusClass = (h.availability_status||'').toLowerCase();
+    return `
+    <div class="card" onclick="openProfile('${h.id}')">
+      ${h.photo_url ? `<img class="card-photo" src="${h.photo_url}" alt="${h.full_name}" loading="lazy">` : `<div class="card-photo" style="display:flex;align-items:center;justify-content:center;font-size:48px;color:#cbd5e1">${(h.full_name||'?')[0]}</div>`}
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div class="card-name">${h.full_name || '—'}</div>
+          <span class="card-status ${statusClass}">${h.availability_status || '—'}</span>
+        </div>
+        <div class="card-meta">
+          <span>${h.nationality || '—'}</span>
+          <span>${age} yrs</span>
+          ${h.exp_sg ? `<span>SG Exp</span>` : ''}
+          ${h.religion ? `<span>${h.religion}</span>` : ''}
+        </div>
+        <div class="card-salary">$${h.salary || '550'}/mth</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openProfile(id) {
+  const h = allHelpers.find(x => x.id === id);
+  if (!h) return;
+  const age = h.dob ? Math.floor((Date.now() - new Date(h.dob)) / 31557600000) : '—';
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('en-SG', {day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const skillLabel = v => v === 'N.A' || !v ? '—' : '★'.repeat(parseInt(v)) + '☆'.repeat(5-parseInt(v));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'profile-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="profile-card" style="position:relative">
+      <button class="profile-close" onclick="this.closest('.profile-overlay').remove()">&times;</button>
+      <div class="profile-header">
+        ${h.photo_url ? `<img class="profile-photo" src="${h.photo_url}">` : `<div class="profile-photo" style="display:flex;align-items:center;justify-content:center;font-size:48px;background:#f1f5f9;color:#94a3b8">${(h.full_name||'?')[0]}</div>`}
+        <div class="profile-info">
+          <h2>${h.full_name || '—'}</h2>
+          <div class="code">${h.fdw_code || ''}</div>
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+            <span class="card-status ${(h.availability_status||'').toLowerCase()}">${h.availability_status}</span>
+            <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600">${h.nationality}</span>
+            <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600">${age} years old</span>
+          </div>
+          <div style="margin-top:12px;font-size:24px;font-weight:700;color:var(--teal)">$${h.salary || '550'}/mth</div>
+        </div>
+      </div>
+      <div class="profile-body">
+        <div class="profile-section">
+          <div class="profile-section-title">Personal Information</div>
+          <div class="profile-grid">
+            <div><div class="label">Date of Birth</div><div class="value">${fmtDate(h.dob)}</div></div>
+            <div><div class="label">Place of Birth</div><div class="value">${h.pob || '—'}</div></div>
+            <div><div class="label">Religion</div><div class="value">${h.religion || '—'}</div></div>
+            <div><div class="label">Marital Status</div><div class="value">${h.marital_status || '—'}</div></div>
+            <div><div class="label">Height / Weight</div><div class="value">${h.height || '—'}cm / ${h.weight || '—'}kg</div></div>
+            <div><div class="label">Education</div><div class="value">${h.education || '—'}</div></div>
+            <div><div class="label">Children</div><div class="value">${h.children || 0} ${h.children_ages ? '('+h.children_ages+')' : ''}</div></div>
+            <div><div class="label">Siblings</div><div class="value">${h.siblings || '—'}</div></div>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <div class="profile-section-title">Experience</div>
+          <div class="profile-grid">
+            <div><div class="label">Singapore</div><div class="value">${h.exp_sg || 'None'}</div></div>
+            <div><div class="label">Malaysia</div><div class="value">${h.exp_my || 'None'}</div></div>
+            <div><div class="label">Hong Kong</div><div class="value">${h.exp_hk || 'None'}</div></div>
+            <div><div class="label">Taiwan</div><div class="value">${h.exp_tw || 'None'}</div></div>
+            <div><div class="label">Middle East</div><div class="value">${h.exp_me || 'None'}</div></div>
+            <div><div class="label">Home Country</div><div class="value">${h.exp_home || 'None'}</div></div>
+          </div>
+          ${h.work_desc ? `<div style="margin-top:8px;font-size:12px;color:#475569;background:#f8fafc;padding:10px;border-radius:8px">${h.work_desc}</div>` : ''}
+        </div>
+
+        <div class="profile-section">
+          <div class="profile-section-title">Skills</div>
+          <div class="profile-grid">
+            <div><div class="label">Care of Infants/Children</div><div class="value">${skillLabel(h.skill_infant)}</div></div>
+            <div><div class="label">Care of Elderly</div><div class="value">${skillLabel(h.skill_elderly)}</div></div>
+            <div><div class="label">Care of Disabled</div><div class="value">${skillLabel(h.skill_disabled)}</div></div>
+            <div><div class="label">General Housework</div><div class="value">${skillLabel(h.skill_housework)}</div></div>
+            <div><div class="label">Cooking</div><div class="value">${skillLabel(h.skill_cooking)}</div></div>
+            <div><div class="label">Language</div><div class="value">${skillLabel(h.skill_language)}</div></div>
+          </div>
+          ${h.cooking_cuisines ? `<div style="margin-top:6px;font-size:12px"><strong>Cuisines:</strong> ${h.cooking_cuisines}</div>` : ''}
+          ${h.spoken_languages ? `<div style="margin-top:4px;font-size:12px"><strong>Languages:</strong> ${h.spoken_languages}</div>` : ''}
+        </div>
+
+        <div class="profile-section">
+          <div class="profile-section-title">Employment Terms</div>
+          <div class="profile-grid">
+            <div><div class="label">Monthly Salary</div><div class="value" style="color:var(--teal);font-size:16px">$${h.salary || '550'}</div></div>
+            <div><div class="label">Rest Days</div><div class="value">${h.rest_days || 4}/month</div></div>
+            <div><div class="label">Food Handling</div><div class="value">${h.food_handling || '—'}</div></div>
+            <div><div class="label">Interview</div><div class="value">${h.interview_avail || '—'}</div></div>
+          </div>
+        </div>
+
+        ${h.remarks ? `<div class="profile-section"><div class="profile-section-title">Remarks</div><div style="font-size:12px;color:#475569">${h.remarks}</div></div>` : ''}
+      </div>
+      <div class="profile-actions">
+        ${h.biodata_pdf ? `<button class="btn-download" onclick="window.open('${SUPABASE_URL}/storage/v1/object/public/biodata/${h.biodata_pdf}','_blank')">📄 Download Biodata</button>` : ''}
+        <button class="btn-enquire" onclick="window.open('https://wa.me/6581802034?text=Hi%20Medina,%20I%20am%20interested%20in%20helper%20${encodeURIComponent(h.full_name||'')}%20(${h.fdw_code||''}).%20Please%20share%20more%20details.','_blank')">💬 Enquire via WhatsApp</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+</script>
+</body>
+</html>
