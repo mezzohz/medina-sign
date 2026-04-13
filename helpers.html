@@ -103,6 +103,13 @@
   .empty { text-align:center; padding:80px 20px; color:var(--muted); }
   .empty .icon { font-size:56px; margin-bottom:16px; }
 
+  /* MANAGE MODE */
+  .card.selectable { cursor:pointer; position:relative; }
+  .card.selectable:hover { border-color:#f97316; }
+  .card.selected-card { border-color:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,0.15); }
+  .card-checkbox { position:absolute; top:10px; left:10px; width:22px; height:22px; border-radius:6px; border:2px solid #fff; background:rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:13px; color:#fff; z-index:2; transition:all 0.15s; }
+  .selected-card .card-checkbox { background:#dc2626; border-color:#dc2626; }
+
   @media (max-width:600px) {
     .header { padding:12px 16px; }
     .header-logo { height:56px; }
@@ -160,6 +167,19 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
   </div>
+
+  <!-- ADMIN BULK BAR (admin only) -->
+  <div id="adminBar" style="display:none;padding:10px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button onclick="toggleManageMode()" id="manageBtn" style="padding:8px 16px;border-radius:8px;border:1.5px solid #c2410c;background:#fff;color:#c2410c;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">☑ Manage Profiles</button>
+    <div id="bulkActions" style="display:none;align-items:center;gap:10px">
+      <button onclick="selectAllHelpers()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--dark);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Select All</button>
+      <button onclick="deselectAllHelpers()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--dark);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Deselect All</button>
+      <span id="selectedCount" style="font-size:13px;color:var(--muted);font-weight:600">0 selected</span>
+      <button onclick="deleteSelected()" id="deleteSelectedBtn" style="padding:8px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;opacity:0.4" disabled>🗑 Delete Selected</button>
+      <button onclick="toggleManageMode()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+
   <div class="grid" id="helperGrid"></div>
 </div>
 
@@ -170,6 +190,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let allHelpers = [];
 let portalToken = null;
+let manageMode = false;
+let selectedIds = new Set();
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token');
@@ -235,6 +257,7 @@ async function loadHelpers() {
     .select('*').eq('status', 'active').order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   allHelpers = data || [];
+  if (isAdmin) document.getElementById('adminBar').style.display = 'flex';
   renderHelpers();
 }
 
@@ -293,7 +316,8 @@ function renderHelpers() {
     const nat = toTitle(h.nationality) || '';
     const rel = toTitle(h.religion) || '';
     return `
-    <div class="card" onclick="openProfile('${h.id}')">
+    <div class="card ${manageMode ? 'selectable' : ''} ${selectedIds.has(h.id) ? 'selected-card' : ''}" data-id="${h.id}" onclick="${manageMode ? `toggleSelect('${h.id}')` : `openProfile('${h.id}')`}">
+      ${manageMode ? `<div class="card-checkbox">${selectedIds.has(h.id) ? '✓' : ''}</div>` : ''}
       ${h.photo_url
         ? `<img class="card-photo" src="${h.photo_url}" alt="${name}" loading="lazy">`
         : `<div class="card-photo-placeholder">${name[0]}</div>`}
@@ -412,6 +436,74 @@ function openProfile(id) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+function toggleManageMode() {
+  manageMode = !manageMode;
+  selectedIds.clear();
+  const bulkActions = document.getElementById('bulkActions');
+  const manageBtn = document.getElementById('manageBtn');
+  if (manageMode) {
+    bulkActions.style.display = 'flex';
+    manageBtn.style.display = 'none';
+  } else {
+    bulkActions.style.display = 'none';
+    manageBtn.style.display = 'inline-block';
+  }
+  renderHelpers();
+}
+
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  const count = selectedIds.size;
+  document.getElementById('selectedCount').textContent = count + ' selected';
+  const btn = document.getElementById('deleteSelectedBtn');
+  btn.disabled = count === 0;
+  btn.style.opacity = count === 0 ? '0.4' : '1';
+  renderHelpers();
+}
+
+function selectAllHelpers() {
+  document.querySelectorAll('.card.selectable').forEach(card => {
+    const id = card.getAttribute('data-id');
+    if (id) selectedIds.add(id);
+  });
+  // Get ids from current filtered view
+  const grid = document.getElementById('helperGrid');
+  grid.querySelectorAll('[data-id]').forEach(el => selectedIds.add(el.getAttribute('data-id')));
+  const count = selectedIds.size;
+  document.getElementById('selectedCount').textContent = count + ' selected';
+  const btn = document.getElementById('deleteSelectedBtn');
+  btn.disabled = count === 0;
+  btn.style.opacity = count === 0 ? '0.4' : '1';
+  renderHelpers();
+}
+
+function deselectAllHelpers() {
+  selectedIds.clear();
+  document.getElementById('selectedCount').textContent = '0 selected';
+  const btn = document.getElementById('deleteSelectedBtn');
+  btn.disabled = true;
+  btn.style.opacity = '0.4';
+  renderHelpers();
+}
+
+async function deleteSelected() {
+  if (selectedIds.size === 0) return;
+  const names = [...selectedIds].map(id => {
+    const h = allHelpers.find(x => x.id === id);
+    return h ? toTitle(h.full_name) : id;
+  });
+  if (!confirm(`Delete ${selectedIds.size} helper(s)?\n\n${names.join('\n')}\n\nThis cannot be undone.`)) return;
+  const btn = document.getElementById('deleteSelectedBtn');
+  btn.textContent = 'Deleting...'; btn.disabled = true;
+  const ids = [...selectedIds];
+  const { error } = await sb.from('portal_helpers').delete().in('id', ids);
+  if (error) { alert('Failed: ' + error.message); btn.textContent = '🗑 Delete Selected'; btn.disabled = false; return; }
+  allHelpers = allHelpers.filter(h => !ids.includes(h.id));
+  selectedIds.clear();
+  toggleManageMode();
 }
 
 async function deletePortalHelper(id, name) {
