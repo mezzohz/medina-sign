@@ -235,7 +235,6 @@ function renderHelpers() {
           ${h.exp_sg ? `<span>SG Exp</span>` : ''}
           ${h.religion ? `<span>${h.religion}</span>` : ''}
         </div>
-        <div class="card-salary">$${h.salary || '550'}/mth</div>
       </div>
     </div>`;
   }).join('');
@@ -264,7 +263,6 @@ function openProfile(id) {
             <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600">${h.nationality}</span>
             <span style="background:#f1f5f9;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600">${age} years old</span>
           </div>
-          <div style="margin-top:12px;font-size:24px;font-weight:700;color:var(--teal)">$${h.salary || '550'}/mth</div>
         </div>
       </div>
       <div class="profile-body">
@@ -312,7 +310,6 @@ function openProfile(id) {
         <div class="profile-section">
           <div class="profile-section-title">Employment Terms</div>
           <div class="profile-grid">
-            <div><div class="label">Monthly Salary</div><div class="value" style="color:var(--teal);font-size:16px">$${h.salary || '550'}</div></div>
             <div><div class="label">Rest Days</div><div class="value">${h.rest_days || 4}/month</div></div>
             <div><div class="label">Food Handling</div><div class="value">${h.food_handling || '—'}</div></div>
             <div><div class="label">Interview</div><div class="value">${h.interview_avail || '—'}</div></div>
