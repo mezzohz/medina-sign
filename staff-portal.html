@@ -443,27 +443,145 @@ function renderGrid() {
   }).join('');
 }
 
+function field(label, id, val, type='text') {
+  return `<div style="margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">${label}</div>
+    <input id="ef_${id}" type="${type}" value="${(val||'').toString().replace(/"/g,'&quot;')}" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
+  </div>`;
+}
+function fieldSelect(label, id, val, options) {
+  const opts = options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o||'—'}</option>`).join('');
+  return `<div style="margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">${label}</div>
+    <select id="ef_${id}" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">${opts}</select>
+  </div>`;
+}
+function fieldArea(label, id, val) {
+  return `<div style="margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">${label}</div>
+    <textarea id="ef_${id}" rows="3" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark);resize:vertical">${val||''}</textarea>
+  </div>`;
+}
+function sectionHdr(title) {
+  return `<div style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:0.8px;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid #f0fdfa">${title}</div>`;
+}
+
 function openHelper(id) {
   const h = allHelpers.find(x => x.id === id);
   if (!h) return;
   const name = toTitle(h.full_name) || '—';
-  const age = calcAge(h.dob);
   const isActive = h.status === 'active';
+  const skills = ['1','2','3','4','5','N.A'];
+
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  overlay.id = 'editOverlay_' + id;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;padding:24px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
-    <button onclick="this.closest('div[style]').remove()" style="position:absolute;top:12px;right:12px;background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
-    ${h.photo_url ? `<img src="${h.photo_url}" style="width:100px;height:130px;object-fit:cover;object-position:top;border-radius:10px;float:left;margin:0 16px 12px 0">` : ''}
-    <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">${name}</h2>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${toTitle(h.nationality)||''} • ${age ? age+' yrs' : ''} • <span style="color:${isActive?'var(--green)':'var(--muted)'}">●</span> ${isActive ? 'Active' : 'Inactive'}</div>
-    <div style="clear:both"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      ${isActive ? `<button onclick="setStatus('${h.id}','inactive',this)" style="flex:1;padding:10px;border-radius:8px;background:#fef3c7;color:#b45309;border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Mark Inactive</button>` : `<button onclick="setStatus('${h.id}','active',this)" style="flex:1;padding:10px;border-radius:8px;background:#f0fdf4;color:var(--green);border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Mark Active</button>`}
-      <button onclick="deleteSingle('${h.id}','${name.replace(/'/g,"\\'")}',this)" style="flex:1;padding:10px;border-radius:8px;background:#fee2e2;color:var(--red);border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">🗑 Delete</button>
+
+  overlay.innerHTML = `
+  <div style="background:#fff;border-radius:18px;max-width:640px;width:100%;margin:20px auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);overflow:hidden">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0A1628,#1E3A5F);padding:20px 24px;display:flex;align-items:center;gap:16px">
+      ${h.photo_url ? `<img src="${h.photo_url}" style="width:70px;height:90px;object-fit:cover;object-position:top;border-radius:10px;flex-shrink:0;border:2px solid rgba(255,255,255,0.2)">` : `<div style="width:70px;height:90px;border-radius:10px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:36px;color:rgba(255,255,255,0.5)">${name[0]}</div>`}
+      <div style="flex:1">
+        <div style="color:#fff;font-size:18px;font-weight:700">${name}</div>
+        <div style="color:#94a3b8;font-size:12px;margin-top:4px">${toTitle(h.nationality)||''} • ${calcAge(h.dob) ? calcAge(h.dob)+' yrs' : ''}</div>
+        <div style="margin-top:8px">
+          <span style="background:${isActive?'#059669':'#64748B'};color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${isActive?'Active':'Inactive'}</span>
+        </div>
+      </div>
+      <button onclick="document.getElementById('editOverlay_${id}').remove()" style="background:rgba(255,255,255,0.1);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
+    </div>
+
+    <!-- Form -->
+    <div style="padding:20px 24px;max-height:65vh;overflow-y:auto">
+      ${sectionHdr('Personal Information')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+        ${field('Full Name','full_name',h.full_name)}
+        ${field('Date of Birth','dob',h.dob,'date')}
+        ${field('Place of Birth','pob',h.pob)}
+        ${fieldSelect('Nationality','nationality',h.nationality,['','Indonesian','Filipino','Myanmar','Indian','Sri Lankan'])}
+        ${fieldSelect('Religion','religion',h.religion,['','Muslim','Moslem','Christian','Catholic','Hindu','Buddhist','Other'])}
+        ${fieldSelect('Marital Status','marital_status',h.marital_status,['','Single','Married','Divorced','Widowed'])}
+        ${field('Height (cm)','height',h.height,'number')}
+        ${field('Weight (kg)','weight',h.weight,'number')}
+        ${field('Children','children',h.children,'number')}
+        ${field('Children Ages','children_ages',h.children_ages)}
+        ${field('Siblings','siblings',h.siblings,'number')}
+        ${field('Education','education',h.education)}
+      </div>
+
+      ${sectionHdr('Work Experience')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+        ${field('Singapore','exp_sg',h.exp_sg)}
+        ${field('Hong Kong','exp_hk',h.exp_hk)}
+        ${field('Taiwan','exp_tw',h.exp_tw)}
+        ${field('Malaysia','exp_my',h.exp_my)}
+        ${field('Middle East','exp_me',h.exp_me)}
+        ${field('Home Country','exp_home',h.exp_home)}
+      </div>
+      ${fieldArea('Work Description','work_desc',h.work_desc)}
+
+      ${sectionHdr('Skills')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+        ${fieldSelect('Infant/Children','skill_infant',h.skill_infant,skills)}
+        ${fieldSelect('Elderly','skill_elderly',h.skill_elderly,skills)}
+        ${fieldSelect('Disabled','skill_disabled',h.skill_disabled,skills)}
+        ${fieldSelect('Housework','skill_housework',h.skill_housework,skills)}
+        ${fieldSelect('Cooking','skill_cooking',h.skill_cooking,skills)}
+        ${fieldSelect('Language','skill_language',h.skill_language,skills)}
+      </div>
+      ${field('Spoken Languages','spoken_languages',h.spoken_languages)}
+      ${field('Cooking Cuisines','cooking_cuisines',h.cooking_cuisines)}
+
+      ${sectionHdr('Employment Terms')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+        ${field('Rest Days/Month','rest_days',h.rest_days,'number')}
+        ${field('Food Handling','food_handling',h.food_handling)}
+        ${field('Interview Availability','interview_avail',h.interview_avail)}
+        ${fieldSelect('Status','status',h.status,['active','inactive'])}
+      </div>
+      ${fieldArea('Remarks','remarks',h.remarks)}
+    </div>
+
+    <!-- Footer actions -->
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px">
+      <button onclick="saveHelper('${id}')" style="flex:2;padding:12px;border-radius:10px;background:linear-gradient(135deg,#0D7377,#0a9396);color:#fff;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;cursor:pointer" id="saveBtn_${id}">💾 Save Changes</button>
+      <button onclick="deleteSingle('${id}','${name.replace(/'/g,"\\'")}',this)" style="flex:1;padding:12px;border-radius:10px;background:#fee2e2;color:var(--red);border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer">🗑 Delete</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
+}
+
+async function saveHelper(id) {
+  const btn = document.getElementById('saveBtn_' + id);
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const g = fid => document.getElementById('ef_' + fid)?.value ?? null;
+  const gNum = fid => { const v = parseFloat(g(fid)); return isNaN(v) ? null : v; };
+  const gDate = fid => { const v = g(fid); return (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v : null; };
+
+  const updates = {
+    full_name: g('full_name'), dob: gDate('dob'), pob: g('pob'),
+    nationality: g('nationality'), religion: g('religion'), marital_status: g('marital_status'),
+    height: g('height') || null, weight: g('weight') || null,
+    children: gNum('children'), children_ages: g('children_ages'), siblings: gNum('siblings'),
+    education: g('education'),
+    exp_sg: g('exp_sg')||null, exp_hk: g('exp_hk')||null, exp_tw: g('exp_tw')||null,
+    exp_my: g('exp_my')||null, exp_me: g('exp_me')||null, exp_home: g('exp_home')||null,
+    work_desc: g('work_desc'),
+    skill_infant: g('skill_infant'), skill_elderly: g('skill_elderly'),
+    skill_disabled: g('skill_disabled'), skill_housework: g('skill_housework'),
+    skill_cooking: g('skill_cooking'), skill_language: g('skill_language'),
+    spoken_languages: g('spoken_languages'), cooking_cuisines: g('cooking_cuisines'),
+    rest_days: gNum('rest_days'), food_handling: g('food_handling'),
+    interview_avail: g('interview_avail'), status: g('status'), remarks: g('remarks')
+  };
+
+  const { error } = await sb.from('portal_helpers').update(updates).eq('id', id);
+  if (error) { alert('Save failed: ' + error.message); btn.disabled = false; btn.textContent = '💾 Save Changes'; return; }
+  allHelpers = allHelpers.map(h => h.id === id ? { ...h, ...updates } : h);
+  document.getElementById('editOverlay_' + id)?.remove();
+  renderGrid(); loadStats();
 }
 
 async function setStatus(id, status, btn) {
