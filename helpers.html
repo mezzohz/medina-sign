@@ -132,11 +132,26 @@ let portalToken = null;
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token');
 
+const isAdmin = params.get('admin') === '1';
+
 if (!token) {
   document.getElementById('loginErr').textContent = 'Invalid link — no access token provided.';
   document.getElementById('loginErr').style.display = 'block';
   document.getElementById('pwInput').style.display = 'none';
   document.getElementById('loginBtn').style.display = 'none';
+} else if (isAdmin) {
+  // Admin bypass — auto-validate without password
+  (async () => {
+    try {
+      const { data } = await sb.from('helper_portal_tokens').select('*').eq('token', token).gte('expires_at', new Date().toISOString()).limit(1);
+      if (data?.length && data[0].password_hash === '__admin__') {
+        portalToken = data[0];
+        await loadHelpers();
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('portal').style.display = 'block';
+      }
+    } catch (e) { console.error('Admin bypass failed:', e); }
+  })();
 }
 
 async function validateAccess() {
