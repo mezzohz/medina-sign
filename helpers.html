@@ -72,6 +72,7 @@
   .tag-exp   { background:#fff7ed; color:#c2410c; font-weight:700; }
   .tag-rel   { background:#f0fdf4; color:#15803d; }
   .tag-avail { background:var(--green-bg); color:var(--green); }
+  .tag-skill { background:#fdf4ff; color:#7e22ce; font-weight:700; }
 
   /* PROFILE DETAIL */
   .profile-overlay { position:fixed; inset:0; background:rgba(10,22,40,0.65); z-index:100; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto; }
@@ -164,6 +165,13 @@
       <option value="my">Malaysia</option>
       <option value="me">Middle East</option>
       <option value="fresh">Fresh (Home Country Only)</option>
+    </select>
+    <select id="filterSkill" onchange="renderHelpers()">
+      <option value="">All Skills</option>
+      <option value="skill_elderly">Elder Care</option>
+      <option value="skill_infant">Child Care</option>
+      <option value="skill_cooking">Cooking</option>
+      <option value="skill_housework">General Housework</option>
     </select>
     <div class="count-badge" id="resultCount"></div>
   </div>
@@ -294,6 +302,13 @@ function renderHelpers() {
       if (ageMax && age > ageMax) return false;
     }
 
+    // Skill filter — must have a numeric rating (1-5), not N.A or empty
+    const skill = document.getElementById('filterSkill')?.value || '';
+    if (skill) {
+      const v = h[skill];
+      if (!v || v === 'N.A' || isNaN(parseInt(v))) return false;
+    }
+
     // Experience filter
     if (exp === 'sg' && !h.exp_sg) return false;
     if (exp === 'hk' && !h.exp_hk) return false;
@@ -339,6 +354,10 @@ function renderHelpers() {
           ${h.exp_tw ? `<span class="tag tag-exp">Ex Taiwan</span>` : ''}
           ${h.exp_my ? `<span class="tag tag-exp">Ex Malaysia</span>` : ''}
           ${h.exp_me ? `<span class="tag tag-exp">Ex Middle East</span>` : ''}
+          ${(h.skill_elderly && h.skill_elderly !== 'N.A') ? `<span class="tag tag-skill">Elder Care</span>` : ''}
+          ${(h.skill_infant && h.skill_infant !== 'N.A') ? `<span class="tag tag-skill">Child Care</span>` : ''}
+          ${(h.skill_cooking && h.skill_cooking !== 'N.A') ? `<span class="tag tag-skill">Cooking</span>` : ''}
+          ${(h.skill_housework && h.skill_housework !== 'N.A') ? `<span class="tag tag-skill">Housework</span>` : ''}
           <span class="tag tag-avail">Available</span>
         </div>
       </div>
