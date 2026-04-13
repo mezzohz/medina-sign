@@ -144,13 +144,11 @@
       <option value="Myanmar">Myanmar</option>
       <option value="Indian">Indian</option>
     </select>
-    <select id="filterAge" onchange="renderHelpers()">
-      <option value="">All Ages</option>
-      <option value="u30">Under 30</option>
-      <option value="30-35">30 – 35</option>
-      <option value="36-40">36 – 40</option>
-      <option value="41+">41 and above</option>
-    </select>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="number" id="filterAgeMin" placeholder="Min age" min="18" max="60" oninput="renderHelpers()" style="width:90px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
+      <span style="color:var(--muted);font-size:13px">–</span>
+      <input type="number" id="filterAgeMax" placeholder="Max age" min="18" max="60" oninput="renderHelpers()" style="width:90px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
+    </div>
     <select id="filterExp" onchange="renderHelpers()">
       <option value="">All Experience</option>
       <option value="sg">Singapore</option>
@@ -248,7 +246,6 @@ function calcAge(dob) {
 function renderHelpers() {
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const nat = document.getElementById('filterNationality')?.value || '';
-  const ageRange = document.getElementById('filterAge')?.value || '';
   const exp = document.getElementById('filterExp')?.value || '';
 
   let filtered = allHelpers.filter(h => {
@@ -258,13 +255,13 @@ function renderHelpers() {
     if (nat && (h.nationality||'').toLowerCase() !== nat.toLowerCase()) return false;
 
     // Age range filter
-    if (ageRange) {
+    const ageMin = parseInt(document.getElementById('filterAgeMin')?.value) || null;
+    const ageMax = parseInt(document.getElementById('filterAgeMax')?.value) || null;
+    if (ageMin || ageMax) {
       const age = calcAge(h.dob);
       if (!age) return false;
-      if (ageRange === 'u30' && age >= 30) return false;
-      if (ageRange === '30-35' && (age < 30 || age > 35)) return false;
-      if (ageRange === '36-40' && (age < 36 || age > 40)) return false;
-      if (ageRange === '41+' && age < 41) return false;
+      if (ageMin && age < ageMin) return false;
+      if (ageMax && age > ageMax) return false;
     }
 
     // Experience filter
