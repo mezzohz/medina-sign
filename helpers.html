@@ -27,19 +27,18 @@
   .login-card button:disabled { opacity:0.5; }
   .login-card .err { color:#dc2626; font-size:13px; margin-top:8px; display:none; }
 
-  /* HEADER — white so logo displays properly */
+  /* HEADER — dark navy so white logo text is visible */
   .header {
-    background:var(--white);
-    border-bottom:1px solid var(--border);
+    background:linear-gradient(135deg,#0A1628 0%,#1E3A5F 100%);
     padding:16px 28px;
     display:flex;
     align-items:center;
     gap:16px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
+    box-shadow:0 2px 16px rgba(0,0,0,0.20);
   }
   .header-logo { height:80px; display:block; }
-  .header-text h1 { font-size:18px; font-weight:700; color:var(--dark); }
-  .header-text .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .header-text h1 { font-size:18px; font-weight:700; color:#fff; }
+  .header-text .sub { color:#94a3b8; font-size:12px; margin-top:2px; }
 
   /* FILTERS */
   .filters {
