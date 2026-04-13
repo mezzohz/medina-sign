@@ -302,11 +302,11 @@ function renderHelpers() {
       if (ageMax && age > ageMax) return false;
     }
 
-    // Skill filter — must have a numeric rating (1-5), not N.A or empty
+    // Skill filter — must have a rating of 3 or above (meaningful experience)
     const skill = document.getElementById('filterSkill')?.value || '';
     if (skill) {
-      const v = h[skill];
-      if (!v || v === 'N.A' || isNaN(parseInt(v))) return false;
+      const v = parseInt(h[skill]);
+      if (isNaN(v) || v < 3) return false;
     }
 
     // Experience filter
@@ -354,10 +354,10 @@ function renderHelpers() {
           ${h.exp_tw ? `<span class="tag tag-exp">Ex Taiwan</span>` : ''}
           ${h.exp_my ? `<span class="tag tag-exp">Ex Malaysia</span>` : ''}
           ${h.exp_me ? `<span class="tag tag-exp">Ex Middle East</span>` : ''}
-          ${(h.skill_elderly && h.skill_elderly !== 'N.A') ? `<span class="tag tag-skill">Elder Care</span>` : ''}
-          ${(h.skill_infant && h.skill_infant !== 'N.A') ? `<span class="tag tag-skill">Child Care</span>` : ''}
-          ${(h.skill_cooking && h.skill_cooking !== 'N.A') ? `<span class="tag tag-skill">Cooking</span>` : ''}
-          ${(h.skill_housework && h.skill_housework !== 'N.A') ? `<span class="tag tag-skill">Housework</span>` : ''}
+          ${parseInt(h.skill_elderly) >= 3 ? `<span class="tag tag-skill">Elder Care</span>` : ''}
+          ${parseInt(h.skill_infant) >= 3 ? `<span class="tag tag-skill">Child Care</span>` : ''}
+          ${parseInt(h.skill_cooking) >= 3 ? `<span class="tag tag-skill">Cooking</span>` : ''}
+          ${parseInt(h.skill_housework) >= 3 ? `<span class="tag tag-skill">Housework</span>` : ''}
           <span class="tag tag-avail">Available</span>
         </div>
       </div>
