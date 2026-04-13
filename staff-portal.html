@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medina Staff Portal — Helper Management</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --teal:#0D7377; --dark:#0A1628; --cream:#F5F7FA; --white:#fff; --border:#E2E8F0; --muted:#64748B; --red:#dc2626; --green:#059669; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Outfit',sans-serif; background:var(--cream); color:var(--dark); min-height:100vh; }
+
+  /* LOGIN */
+  .login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,#0A1628,#1E3A5F); padding:20px; }
+  .login-card { background:#fff; border-radius:20px; padding:40px 36px; max-width:400px; width:100%; box-shadow:0 24px 64px rgba(0,0,0,0.35); text-align:center; }
+  .login-card img { width:200px; margin-bottom:12px; }
+  .login-card .role-tag { background:#fef3c7; color:#b45309; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; display:inline-block; margin-bottom:20px; }
+  .login-card input { width:100%; padding:13px 16px; border:1.5px solid var(--border); border-radius:10px; font-family:'Outfit',sans-serif; font-size:14px; margin-bottom:12px; color:var(--dark); }
+  .login-card input:focus { outline:none; border-color:var(--teal); }
+  .login-card button { width:100%; padding:13px; background:linear-gradient(135deg,#0D7377,#0a9396); color:#fff; border:none; border-radius:10px; font-family:'Outfit',sans-serif; font-size:15px; font-weight:600; cursor:pointer; }
+  .login-card button:disabled { opacity:0.6; }
+  .login-card .err { color:var(--red); font-size:12px; margin-top:8px; display:none; }
+
+  /* LAYOUT */
+  .header { background:linear-gradient(135deg,#0A1628,#1E3A5F); padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+  .header img { height:56px; }
+  .header-right { display:flex; align-items:center; gap:12px; }
+  .header-user { color:#94a3b8; font-size:13px; }
+  .header-user strong { color:#fff; }
+  .btn-logout { padding:7px 14px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:8px; font-family:'Outfit',sans-serif; font-size:12px; cursor:pointer; }
+  .btn-logout:hover { background:rgba(255,255,255,0.18); }
+
+  /* TABS */
+  .tabs { background:#fff; border-bottom:1px solid var(--border); display:flex; gap:0; padding:0 24px; }
+  .tab { padding:14px 20px; font-size:14px; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; transition:all 0.15s; }
+  .tab.active { color:var(--teal); border-bottom-color:var(--teal); }
+  .tab:hover { color:var(--dark); }
+
+  /* STATS BAR */
+  .stats-bar { display:flex; gap:12px; padding:16px 24px; flex-wrap:wrap; }
+  .stat-card { background:#fff; border:1.5px solid var(--border); border-radius:12px; padding:14px 20px; flex:1; min-width:140px; }
+  .stat-card .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+  .stat-card .value { font-size:28px; font-weight:700; color:var(--dark); margin-top:4px; }
+  .stat-card.green .value { color:var(--green); }
+  .stat-card.red .value { color:var(--red); }
+
+  /* UPLOAD SECTION */
+  .section { padding:20px 24px; }
+  .section h2 { font-size:16px; font-weight:700; margin-bottom:16px; color:var(--dark); }
+  .drop-zone { border:2px dashed var(--border); border-radius:14px; padding:40px 20px; text-align:center; cursor:pointer; transition:all 0.2s; background:#fff; }
+  .drop-zone:hover, .drop-zone.dragging { border-color:var(--teal); background:#f0fdfa; }
+  .drop-zone .icon { font-size:40px; margin-bottom:10px; }
+  .drop-zone p { color:var(--muted); font-size:14px; margin-bottom:8px; }
+  .drop-zone strong { color:var(--teal); }
+  .btn-upload { margin-top:12px; padding:10px 24px; background:var(--teal); color:#fff; border:none; border-radius:8px; font-family:'Outfit',sans-serif; font-size:14px; font-weight:600; cursor:pointer; }
+
+  /* PROGRESS */
+  .progress-wrap { display:none; margin-top:16px; background:#fff; border:1.5px solid var(--border); border-radius:12px; padding:20px; }
+  .progress-track { background:#e2e8f0; border-radius:20px; height:8px; margin:10px 0; overflow:hidden; }
+  .progress-bar { height:100%; background:linear-gradient(90deg,var(--teal),#0a9396); border-radius:20px; transition:width 0.3s; width:0%; }
+  .progress-text { font-size:13px; font-weight:600; color:var(--dark); }
+  .progress-detail { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  /* RESULTS */
+  .results-wrap { display:none; margin-top:16px; }
+  .result-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:6px; }
+  .result-item.ok { background:#f0fdf4; color:#166534; }
+  .result-item.err { background:#fef2f2; color:#991b1b; }
+  .result-item .icon { font-size:16px; flex-shrink:0; }
+
+  /* HELPERS GRID */
+  .toolbar { padding:12px 24px; background:#fff; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:sticky; top:0; z-index:10; }
+  .toolbar input, .toolbar select { padding:9px 13px; border:1.5px solid var(--border); border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; color:var(--dark); }
+  .toolbar input { flex:1; min-width:200px; }
+  .count-tag { background:#f0fdf4; color:var(--green); font-size:12px; font-weight:700; padding:5px 12px; border-radius:20px; margin-left:auto; white-space:nowrap; }
+
+  /* BULK BAR */
+  .bulk-bar { padding:10px 24px; background:#fff7ed; border-bottom:1px solid #fed7aa; display:none; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn { padding:8px 16px; border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:opacity 0.2s; }
+  .btn:hover { opacity:0.85; }
+  .btn-manage { background:#fff; color:#c2410c; border:1.5px solid #c2410c; }
+  .btn-sel-all { background:#fff; color:var(--dark); border:1.5px solid var(--border); }
+  .btn-inactive { background:#fef3c7; color:#b45309; }
+  .btn-delete-sel { background:var(--red); color:#fff; opacity:0.4; }
+  .btn-cancel { background:#fff; color:var(--muted); border:1.5px solid var(--border); }
+
+  /* GRID */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; padding:20px 24px; }
+  .card { background:#fff; border-radius:14px; overflow:hidden; border:1.5px solid var(--border); cursor:pointer; transition:all 0.15s; position:relative; }
+  .card:hover { border-color:var(--teal); box-shadow:0 4px 16px rgba(0,0,0,0.08); }
+  .card.selected-card { border-color:var(--red); box-shadow:0 0 0 3px rgba(220,38,38,0.12); }
+  .card-photo { width:100%; aspect-ratio:3/4; object-fit:cover; object-position:top center; display:block; background:#e2e8f0; }
+  .card-photo-ph { width:100%; aspect-ratio:3/4; display:flex; align-items:center; justify-content:center; font-size:56px; background:linear-gradient(135deg,#e2e8f0,#f1f5f9); color:#cbd5e1; }
+  .card-body { padding:12px 14px; }
+  .card-name { font-weight:700; font-size:14px; margin-bottom:6px; }
+  .card-meta { display:flex; flex-wrap:wrap; gap:4px; }
+  .tag { padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; }
+  .tag-nat { background:#f0f9ff; color:#0369a1; }
+  .tag-age { background:#f5f3ff; color:#6d28d9; }
+  .tag-exp { background:#fff7ed; color:#c2410c; }
+  .tag-date { background:#f8fafc; color:var(--muted); }
+  .card-checkbox { position:absolute; top:8px; left:8px; width:22px; height:22px; border-radius:6px; border:2px solid #fff; background:rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; z-index:2; }
+  .selected-card .card-checkbox { background:var(--red); border-color:var(--red); }
+  .card-status-dot { position:absolute; top:8px; right:8px; width:10px; height:10px; border-radius:50%; background:var(--green); border:2px solid #fff; }
+  .card-status-dot.inactive { background:#94a3b8; }
+
+  .empty { text-align:center; padding:60px 20px; color:var(--muted); grid-column:1/-1; }
+
+  @media (max-width:600px) {
+    .grid { grid-template-columns:repeat(2,1fr); padding:12px; gap:10px; }
+    .stats-bar { padding:12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-wrap">
+    <div class="login-card">
+      <img src="logo-login.png" alt="Medina Recruitment Consultant">
+      <div class="role-tag">Staff Portal</div>
+      <input type="email" id="emailInput" placeholder="Staff email address" autocomplete="email">
+      <input type="password" id="passInput" placeholder="Password" onkeydown="if(event.key==='Enter')staffLogin()">
+      <button id="loginBtn" onclick="staffLogin()">Sign In</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <div class="header">
+    <img src="logo.png" alt="Medina">
+    <div class="header-right">
+      <div class="header-user">Signed in as <strong id="userEmail"></strong></div>
+      <button class="btn-logout" onclick="staffLogout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('upload')">📤 Upload Profiles</div>
+    <div class="tab" onclick="switchTab('manage')">👩 Manage Helpers</div>
+  </div>
+
+  <!-- UPLOAD TAB -->
+  <div id="tabUpload">
+    <div class="stats-bar">
+      <div class="stat-card green"><div class="label">Active Helpers</div><div class="value" id="statActive">—</div></div>
+      <div class="stat-card"><div class="label">Uploaded Today</div><div class="value" id="statToday">—</div></div>
+      <div class="stat-card red"><div class="label">Inactive / Removed</div><div class="value" id="statInactive">—</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Upload Biodata PDFs</h2>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+        ondragover="event.preventDefault();this.classList.add('dragging')"
+        ondragleave="this.classList.remove('dragging')"
+        ondrop="event.preventDefault();this.classList.remove('dragging');handleFiles(event.dataTransfer.files)">
+        <div class="icon">📄</div>
+        <p>Drag & drop biodata PDFs here</p>
+        <p>or <strong>click to browse files</strong></p>
+        <p style="font-size:11px;color:#94a3b8;margin-top:4px">Supports multiple files — AI will extract all details automatically</p>
+        <button class="btn-upload" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Select PDF Files</button>
+        <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none" onchange="handleFiles(this.files)">
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-text" id="progressText">Starting...</div>
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-detail" id="progressDetail"></div>
+      </div>
+
+      <div class="results-wrap" id="resultsWrap"></div>
+    </div>
+  </div>
+
+  <!-- MANAGE TAB -->
+  <div id="tabManage" style="display:none">
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="🔍  Search by name..." oninput="renderGrid()">
+      <select id="filterStatus" onchange="renderGrid()">
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+        <option value="">All</option>
+      </select>
+      <div class="count-tag" id="gridCount"></div>
+    </div>
+
+    <div class="bulk-bar" id="bulkBar">
+      <button class="btn btn-sel-all" onclick="selectAll()">Select All</button>
+      <button class="btn btn-sel-all" onclick="deselectAll()">Deselect All</button>
+      <span id="selCount" style="font-size:13px;font-weight:600;color:var(--muted)">0 selected</span>
+      <button class="btn btn-inactive" id="btnMarkInactive" onclick="markSelectedInactive()" disabled style="opacity:0.4">Mark Inactive</button>
+      <button class="btn btn-delete-sel" id="btnDeleteSel" onclick="deleteSelected()" disabled>🗑 Delete Selected</button>
+      <button class="btn btn-cancel" onclick="exitManageMode()">Cancel</button>
+    </div>
+
+    <div style="padding:12px 24px 0;display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-manage" id="manageBtn" onclick="enterManageMode()">☑ Select to Manage</button>
+    </div>
+
+    <div class="grid" id="helperGrid"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
+const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
+const RENDER_URL   = 'https://medina-pdf-service.onrender.com';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentSession = null;
+let allHelpers = [];
+let manageMode = false;
+let selectedIds = new Set();
+
+// ── AUTH ──────────────────────────────────────────────
+async function staffLogin() {
+  const email = document.getElementById('emailInput').value.trim();
+  const pass  = document.getElementById('passInput').value;
+  const err   = document.getElementById('loginErr');
+  const btn   = document.getElementById('loginBtn');
+  err.style.display = 'none';
+  if (!email || !pass) { err.textContent = 'Enter email and password.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    err.textContent = error.message; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sign In'; return;
+  }
+  currentSession = data.session;
+  document.getElementById('userEmail').textContent = email;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  await loadStats();
+  await loadHelpers();
+}
+
+async function staffLogout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// Authenticated fetch — adds Supabase JWT to all proxy/render requests
+async function authFetch(url, options = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+  options.headers = options.headers || {};
+  if (token) options.headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, options);
+}
+
+// ── TABS ──────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (tab==='upload'&&i===0)||(tab==='manage'&&i===1)));
+  document.getElementById('tabUpload').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('tabManage').style.display = tab === 'manage' ? 'block' : 'none';
+}
+
+// ── STATS ─────────────────────────────────────────────
+async function loadStats() {
+  const today = new Date().toISOString().split('T')[0];
+  const [{ count: active }, { count: inactive }, { count: todayCount }] = await Promise.all([
+    sb.from('portal_helpers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+    sb.from('portal_helpers').select('*', { count: 'exact', head: true }).eq('status', 'inactive'),
+    sb.from('portal_helpers').select('*', { count: 'exact', head: true }).gte('created_at', today + 'T00:00:00Z')
+  ]);
+  document.getElementById('statActive').textContent = active ?? 0;
+  document.getElementById('statInactive').textContent = inactive ?? 0;
+  document.getElementById('statToday').textContent = todayCount ?? 0;
+}
+
+// ── UPLOAD ────────────────────────────────────────────
+async function handleFiles(fileList) {
+  const files = [...fileList].filter(f => f.type === 'application/pdf');
+  if (!files.length) return;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('resultsWrap').style.display = 'none';
+  document.getElementById('resultsWrap').innerHTML = '';
+  const bar = document.getElementById('progressBar');
+  const text = document.getElementById('progressText');
+  const detail = document.getElementById('progressDetail');
+  const results = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    bar.style.width = Math.round(((i) / files.length) * 100) + '%';
+    text.textContent = `Processing ${i + 1} of ${files.length}...`;
+    detail.textContent = file.name;
+    try {
+      const name = await processOneBiodata(file);
+      results.push({ ok: true, label: name + ' — ' + file.name });
+    } catch (e) {
+      results.push({ ok: false, label: file.name + ': ' + e.message });
+    }
+  }
+
+  bar.style.width = '100%';
+  text.textContent = 'Done! ' + results.filter(r => r.ok).length + ' uploaded, ' + results.filter(r => !r.ok).length + ' failed.';
+  detail.textContent = '';
+
+  const rw = document.getElementById('resultsWrap');
+  rw.style.display = 'block';
+  rw.innerHTML = results.map(r =>
+    `<div class="result-item ${r.ok ? 'ok' : 'err'}"><span class="icon">${r.ok ? '✅' : '❌'}</span>${r.label}</div>`
+  ).join('');
+
+  await loadStats();
+  await loadHelpers();
+  document.getElementById('fileInput').value = '';
+}
+
+async function processOneBiodata(file) {
+  // Convert to base64
+  const base64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  // Claude AI extraction
+  const resp = await authFetch(CLAUDE_PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+        { type: 'text', text: `This is a FDW (Foreign Domestic Worker) biodata PDF. Extract ALL information and return ONLY a JSON object:
+{"full_name":"","dob":"YYYY-MM-DD","pob":"","nationality":"","height":"","weight":"","religion":"","marital_status":"","children":0,"children_ages":"","siblings":0,"education":"","exp_sg":"","exp_my":"","exp_hk":"","exp_tw":"","exp_me":"","exp_home":"","work_desc":"","spoken_languages":"","cooking_cuisines":"","skill_infant":"1-5 or N.A","skill_elderly":"1-5 or N.A","skill_disabled":"1-5 or N.A","skill_housework":"1-5 or N.A","skill_cooking":"1-5 or N.A","skill_language":"1-5 or N.A","food_handling":"","rest_days":4,"interview_avail":""}
+Return ONLY the JSON, nothing else.` }
+      ]}]
+    })
+  });
+  const result = await resp.json();
+  if (result.error) throw new Error(result.error.message || 'Claude error');
+  const aiText = result.content?.find(c => c.type === 'text')?.text || '';
+  const match = aiText.replace(/```json\n?|```/g,'').trim().match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse AI response');
+  const d = JSON.parse(match[0]);
+
+  // Sanitize
+  ['dob','passport_expiry','passport_issue'].forEach(f => {
+    if (!d[f] || !/^\d{4}-\d{2}-\d{2}$/.test(d[f]) || isNaN(new Date(d[f]).getTime())) d[f] = null;
+  });
+  ['children','siblings','rest_days'].forEach(f => { const v = parseFloat(d[f]); d[f] = isNaN(v) ? null : v; });
+  if (d.height) d.height = String(d.height).replace(/[^0-9.]/g,'');
+  if (d.weight) d.weight = String(d.weight).replace(/[^0-9.]/g,'');
+
+  // Duplicate check
+  if (d.full_name) {
+    let q = sb.from('portal_helpers').select('id').ilike('full_name', d.full_name);
+    if (d.dob) q = q.eq('dob', d.dob);
+    const { data: ex } = await q.limit(1);
+    if (ex?.length) throw new Error('Duplicate — ' + d.full_name + ' already exists');
+  }
+
+  // Upload PDF
+  const pdfName = `portal_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+  const { error: upErr } = await sb.storage.from('biodata').upload(pdfName, file, { upsert: true, contentType: 'application/pdf' });
+  if (!upErr) d.biodata_pdf = pdfName;
+
+  // Extract photo
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const photoResp = await fetch(RENDER_URL + '/extract-photo', { method:'POST', body: formData });
+    if (photoResp.ok) {
+      const blob = await photoResp.blob();
+      if (blob.size > 1000) {
+        const photoName = `portal_${Date.now()}_photo.jpg`;
+        const { error: phErr } = await sb.storage.from('biodata').upload(photoName, blob, { upsert: true, contentType: 'image/jpeg' });
+        if (!phErr) {
+          const { data: urlData } = sb.storage.from('biodata').getPublicUrl(photoName);
+          d.photo_url = urlData.publicUrl;
+        }
+      }
+    }
+  } catch (e) { /* optional */ }
+
+  // Get session user for created_by
+  const { data: { session } } = await sb.auth.getSession();
+  d.created_by = session?.user?.email || 'staff';
+  d.status = 'active';
+
+  const { error: insErr } = await sb.from('portal_helpers').insert([d]);
+  if (insErr) throw new Error(insErr.message);
+  return d.full_name || file.name;
+}
+
+// ── MANAGE HELPERS ────────────────────────────────────
+async function loadHelpers() {
+  const { data } = await sb.from('portal_helpers').select('*').order('created_at', { ascending: false });
+  allHelpers = data || [];
+  renderGrid();
+}
+
+function toTitle(s) { return s ? s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : ''; }
+function calcAge(dob) { return dob ? Math.floor((Date.now() - new Date(dob)) / 31557600000) : null; }
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-SG', { day:'2-digit', month:'short', year:'numeric' }) : ''; }
+
+function renderGrid() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const statusF = document.getElementById('filterStatus')?.value || '';
+  const filtered = allHelpers.filter(h => {
+    if (search && !(h.full_name||'').toLowerCase().includes(search)) return false;
+    if (statusF && h.status !== statusF) return false;
+    return true;
+  });
+  document.getElementById('gridCount').textContent = filtered.length + ' helpers';
+  if (!filtered.length) {
+    document.getElementById('helperGrid').innerHTML = '<div class="empty">No helpers found.</div>';
+    return;
+  }
+  document.getElementById('helperGrid').innerHTML = filtered.map(h => {
+    const age = calcAge(h.dob);
+    const name = toTitle(h.full_name) || '—';
+    const isSelected = selectedIds.has(h.id);
+    const expTags = [
+      h.exp_sg ? 'Ex SG' : '', h.exp_hk ? 'Ex HK' : '',
+      h.exp_tw ? 'Ex TW' : '', h.exp_my ? 'Ex MY' : '', h.exp_me ? 'Ex ME' : ''
+    ].filter(Boolean);
+    return `<div class="card ${manageMode ? 'selectable' : ''} ${isSelected ? 'selected-card' : ''}" data-id="${h.id}"
+      onclick="${manageMode ? `toggleSelect('${h.id}')` : `openHelper('${h.id}')`}">
+      ${manageMode ? `<div class="card-checkbox">${isSelected ? '✓' : ''}</div>` : ''}
+      <div class="card-status-dot ${h.status !== 'active' ? 'inactive' : ''}"></div>
+      ${h.photo_url ? `<img class="card-photo" src="${h.photo_url}" loading="lazy">` : `<div class="card-photo-ph">${name[0]}</div>`}
+      <div class="card-body">
+        <div class="card-name">${name}</div>
+        <div class="card-meta">
+          ${h.nationality ? `<span class="tag tag-nat">${toTitle(h.nationality)}</span>` : ''}
+          ${age ? `<span class="tag tag-age">${age} yrs</span>` : ''}
+          ${expTags.map(t => `<span class="tag tag-exp">${t}</span>`).join('')}
+          <span class="tag tag-date">${fmtDate(h.created_at?.split('T')[0])}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openHelper(id) {
+  const h = allHelpers.find(x => x.id === id);
+  if (!h) return;
+  const name = toTitle(h.full_name) || '—';
+  const age = calcAge(h.dob);
+  const isActive = h.status === 'active';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;padding:24px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <button onclick="this.closest('div[style]').remove()" style="position:absolute;top:12px;right:12px;background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    ${h.photo_url ? `<img src="${h.photo_url}" style="width:100px;height:130px;object-fit:cover;object-position:top;border-radius:10px;float:left;margin:0 16px 12px 0">` : ''}
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">${name}</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${toTitle(h.nationality)||''} • ${age ? age+' yrs' : ''} • <span style="color:${isActive?'var(--green)':'var(--muted)'}">●</span> ${isActive ? 'Active' : 'Inactive'}</div>
+    <div style="clear:both"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      ${isActive ? `<button onclick="setStatus('${h.id}','inactive',this)" style="flex:1;padding:10px;border-radius:8px;background:#fef3c7;color:#b45309;border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Mark Inactive</button>` : `<button onclick="setStatus('${h.id}','active',this)" style="flex:1;padding:10px;border-radius:8px;background:#f0fdf4;color:var(--green);border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Mark Active</button>`}
+      <button onclick="deleteSingle('${h.id}','${name.replace(/'/g,"\\'")}',this)" style="flex:1;padding:10px;border-radius:8px;background:#fee2e2;color:var(--red);border:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">🗑 Delete</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function setStatus(id, status, btn) {
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const { error } = await sb.from('portal_helpers').update({ status }).eq('id', id);
+  if (error) { alert('Error: ' + error.message); btn.disabled = false; return; }
+  allHelpers = allHelpers.map(h => h.id === id ? { ...h, status } : h);
+  btn.closest('div[style]').remove();
+  renderGrid(); loadStats();
+}
+
+async function deleteSingle(id, name, btn) {
+  if (!confirm('Delete ' + name + '? This cannot be undone.')) return;
+  btn.disabled = true;
+  const { error } = await sb.from('portal_helpers').delete().eq('id', id);
+  if (error) { alert('Error: ' + error.message); btn.disabled = false; return; }
+  allHelpers = allHelpers.filter(h => h.id !== id);
+  btn.closest('div[style]').remove();
+  renderGrid(); loadStats();
+}
+
+// ── BULK MANAGE ───────────────────────────────────────
+function enterManageMode() {
+  manageMode = true;
+  selectedIds.clear();
+  document.getElementById('bulkBar').style.display = 'flex';
+  document.getElementById('manageBtn').style.display = 'none';
+  renderGrid();
+}
+
+function exitManageMode() {
+  manageMode = false;
+  selectedIds.clear();
+  document.getElementById('bulkBar').style.display = 'none';
+  document.getElementById('manageBtn').style.display = 'inline-block';
+  renderGrid();
+}
+
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  updateBulkUI();
+  renderGrid();
+}
+
+function selectAll() {
+  allHelpers.filter(h => {
+    const statusF = document.getElementById('filterStatus')?.value || '';
+    return !statusF || h.status === statusF;
+  }).forEach(h => selectedIds.add(h.id));
+  updateBulkUI(); renderGrid();
+}
+
+function deselectAll() {
+  selectedIds.clear();
+  updateBulkUI(); renderGrid();
+}
+
+function updateBulkUI() {
+  const n = selectedIds.size;
+  document.getElementById('selCount').textContent = n + ' selected';
+  const inactive = document.getElementById('btnMarkInactive');
+  const del = document.getElementById('btnDeleteSel');
+  inactive.disabled = n === 0; inactive.style.opacity = n === 0 ? '0.4' : '1';
+  del.disabled = n === 0; del.style.opacity = n === 0 ? '0.4' : '1';
+}
+
+async function markSelectedInactive() {
+  if (!selectedIds.size) return;
+  if (!confirm('Mark ' + selectedIds.size + ' helper(s) as inactive?')) return;
+  const ids = [...selectedIds];
+  const { error } = await sb.from('portal_helpers').update({ status: 'inactive' }).in('id', ids);
+  if (error) { alert('Error: ' + error.message); return; }
+  allHelpers = allHelpers.map(h => ids.includes(h.id) ? { ...h, status: 'inactive' } : h);
+  selectedIds.clear();
+  exitManageMode();
+  loadStats();
+}
+
+async function deleteSelected() {
+  if (!selectedIds.size) return;
+  const names = [...selectedIds].map(id => { const h = allHelpers.find(x => x.id === id); return h ? toTitle(h.full_name) : id; });
+  if (!confirm('Permanently delete ' + selectedIds.size + ' helper(s)?\n\n' + names.join('\n'))) return;
+  const ids = [...selectedIds];
+  const { error } = await sb.from('portal_helpers').delete().in('id', ids);
+  if (error) { alert('Error: ' + error.message); return; }
+  allHelpers = allHelpers.filter(h => !ids.includes(h.id));
+  selectedIds.clear();
+  exitManageMode();
+  loadStats();
+}
+
+// Check existing session on load
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentSession = session;
+    document.getElementById('userEmail').textContent = session.user.email;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    await loadStats();
+    await loadHelpers();
+  }
+})();
+</script>
+</body>
+</html>
