@@ -324,9 +324,22 @@ function openProfile(id) {
       <div class="profile-actions">
         ${h.biodata_pdf ? `<button class="btn-download" onclick="window.open('${SUPABASE_URL}/storage/v1/object/public/biodata/${h.biodata_pdf}','_blank')">📄 Download Biodata</button>` : ''}
         <button class="btn-enquire" onclick="window.open('https://wa.me/6581802034?text=Hi%20Medina,%20I%20am%20interested%20in%20helper%20${encodeURIComponent(h.full_name||'')}%20(${h.fdw_code||''}).%20Please%20share%20more%20details.','_blank')">💬 Enquire via WhatsApp</button>
+        ${isAdmin ? `<button onclick="deletePortalHelper('${h.id}','${(h.full_name||'').replace(/'/g,"\\'")}')" style="padding:12px;border-radius:10px;background:#fee2e2;color:#dc2626;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer">🗑 Delete</button>` : ''}
       </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+async function deletePortalHelper(id, name) {
+  if (!confirm('Delete ' + name + ' from portal? This cannot be undone.')) return;
+  const { error } = await sb.from('portal_helpers').delete().eq('id', id);
+  if (error) { alert('Failed: ' + error.message); return; }
+  // Remove from local array and re-render
+  allHelpers = allHelpers.filter(h => h.id !== id);
+  renderHelpers();
+  // Close profile overlay
+  const overlay = document.querySelector('.profile-overlay');
+  if (overlay) overlay.remove();
 }
 </script>
 </body>
