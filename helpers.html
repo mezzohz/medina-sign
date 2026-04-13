@@ -174,9 +174,9 @@ async function validateAccess() {
 }
 
 async function loadHelpers() {
-  const { data, error } = await sb.from('helpers')
+  const { data, error } = await sb.from('portal_helpers')
     .select('*')
-    .in('availability_status', ['Available', 'Selected'])
+    .eq('status', 'active')
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   allHelpers = data || [];
