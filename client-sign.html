@@ -351,8 +351,9 @@ async function init() {
 
   let data, error;
 
-  if (docType === 'booking_doc' || docType === 'booking_doc_fdw' || docType === 'ec_signing') {
-    // Fetch from signing_requests (booking document — employer or FDW or EC)
+  // booking_doc, booking_doc_fdw, booking_doc_sponsor1, booking_doc_sponsor2, ec_signing
+  if (docType === 'booking_doc' || docType.startsWith('booking_doc_') || docType === 'ec_signing') {
+    // Fetch from signing_requests (booking document — employer / FDW / sponsor / EC)
     const res = await sb.from('signing_requests').select('*').eq('token', token).single();
     data = res.data; error = res.error;
     if (error || !data) { showError('Link Invalid', 'This signing link is invalid or not found.'); return; }
@@ -503,13 +504,28 @@ async function renderForm(d) {
     return;
   }
 
-  if (docType === 'booking_doc' || docType === 'booking_doc_fdw') {
+  if (docType === 'booking_doc' || docType.startsWith('booking_doc_')) {
+    // Determine the signer's role from either the explicit signer_role column
+    // (set when Phase 3 bundle links are generated) or from the legacy document_type suffix.
+    const signerRole = (d.signer_role || '').toLowerCase()
+      || (d.document_type || '').replace(/^bundle_deployment_?/, '') || 'employer';
+    const roleLabelMap = {
+      employer: { label: 'Employer',  icon: '👤', color: '#4338ca' },
+      fdw:      { label: 'FDW',       icon: '👩', color: '#92400e' },
+      sponsor1: { label: 'Sponsor 1', icon: '🧑', color: '#0f766e' },
+      sponsor2: { label: 'Sponsor 2', icon: '🧑', color: '#0e7490' },
+    };
+    const roleInfo = roleLabelMap[signerRole] || roleLabelMap.employer;
     // Show full document in scrollable container
     const docTypeLabels = {
       service_agreement: 'Service Agreement', package_agreement: 'Package Agreement',
       fees_schedule: 'Services & Fees Schedule', employment: 'Employment Contract',
       handover: 'Handing & Taking Over Form', rest_day: 'Rest Day Agreement',
       safety: 'Safety Agreement', orientation: 'Orientation Checklist',
+      bundle_deployment: 'Deployment Bundle',
+      bundle_deployment_fdw: 'Deployment Bundle',
+      bundle_deployment_sponsor1: 'Deployment Bundle',
+      bundle_deployment_sponsor2: 'Deployment Bundle',
     };
     const label = docTypeLabels[d.document_type] || d.document_type;
     let docHtml = '<div style="text-align:center;padding:20px;color:var(--muted)">Loading document...</div>';
@@ -522,17 +538,19 @@ async function renderForm(d) {
         docHtml = '<div style="color:var(--danger);padding:20px">Error loading document: ' + e.message + '</div>';
       }
     }
+    // Signer display block — name + role pill so signer sees exactly whose signature they are providing
+    const signerDisplay = d.signer_name || (signerRole === 'fdw' ? d.helper_name : d.employer_name) || '—';
+    const signerNricDisplay = d.signer_nric || (signerRole === 'fdw' ? d.helper_fin : d.employer_nric) || '—';
     document.getElementById('infoGrid').innerHTML = `
       <div class="info-card" style="grid-column:span 2;text-align:center">
         <label>Document</label><span style="font-weight:700;color:var(--teal)">${label}</span>
       </div>
-      ${docType === 'booking_doc_fdw' ? `
-        <div class="info-card"><label>FDW Name</label><span>${d.helper_name || '—'}</span></div>
-        <div class="info-card"><label>Employer</label><span>${d.employer_name || '—'}</span></div>
-      ` : `
-        <div class="info-card"><label>Employer</label><span>${d.employer_name || '—'}</span></div>
-        <div class="info-card"><label>NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
-      `}
+      <div class="info-card" style="grid-column:span 2;text-align:center;background:${roleInfo.color}15;border:1px solid ${roleInfo.color}33">
+        <label style="color:${roleInfo.color}">Signing as</label>
+        <span style="font-weight:700;color:${roleInfo.color};font-size:15px">${roleInfo.icon} ${roleInfo.label}${d.signer_name || d.helper_name || d.employer_name ? ' — ' + (d.signer_name || (signerRole === 'fdw' ? d.helper_name : d.employer_name)) : ''}</span>
+      </div>
+      <div class="info-card"><label>Name</label><span>${signerDisplay}</span></div>
+      <div class="info-card"><label>NRIC / FIN / WP</label><span>${maskNric(signerNricDisplay)}</span></div>
       <div class="info-card" style="grid-column:span 2">
         <div class="doc-viewer-wrap">
           <iframe id="docFrame" srcdoc=""></iframe>
@@ -783,13 +801,36 @@ async function submitSignature() {
       status: 'signed',
     }).eq('token', signingData.token).eq('status', 'pending');
     error = res.error;
-  } else if (docType === 'booking_doc' || docType === 'booking_doc_fdw') {
+  } else if (docType === 'booking_doc' || docType.startsWith('booking_doc_')) {
+    const nowIso = new Date().toISOString();
     const res = await sb.from('signing_requests').update({
       signature_image: base64,
-      signed_at: new Date().toISOString(),
+      signed_at: nowIso,
       status: 'signed',
     }).eq('token', signingData.token).eq('status', 'pending');
     error = res.error;
+    // ── Phase 4: propagate bundle signature to the matching MOM Declaration row ──
+    // If this bundle signing is for a booking that also has a pending declaration
+    // signing_requests row for the same signer_role, reuse the signature there so
+    // the standalone declaration's "Compose" flow sees it as signed too.
+    if (!error && signingData.booking_ref && (signingData.signer_role || docType !== 'booking_doc_fdw' && docType !== 'booking_doc')) {
+      const role = (signingData.signer_role || '').toLowerCase() ||
+        (docType === 'booking_doc' ? 'employer' : docType.replace('booking_doc_', ''));
+      if (role) {
+        try {
+          await sb.from('signing_requests')
+            .update({ signature_image: base64, signed_at: nowIso, status: 'signed' })
+            .eq('booking_ref', signingData.booking_ref)
+            .eq('document_type', 'declaration')
+            .eq('signer_role', role)
+            .eq('status', 'pending');
+          // Ignore errors here — the main signature already saved. Declaration
+          // sync is a convenience to keep the Compose PDF in sync.
+        } catch (syncErr) {
+          console.warn('[declaration-sync] failed, main signature still saved:', syncErr);
+        }
+      }
+    }
   } else {
     const res = await sb.from('signing_requests').update({
       signature_image: base64,
