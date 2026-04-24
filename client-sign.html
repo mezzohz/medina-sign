@@ -631,7 +631,7 @@ function initCanvas() {
   canvas.height = rect.height * dpr;
   ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#111';
@@ -720,7 +720,7 @@ function getBase64() {
   tmp.height = r.height * dpr;
   const c = tmp.getContext('2d');
   c.scale(dpr, dpr);
-  c.lineWidth = 2.5;
+  c.lineWidth = 4;
   c.lineCap = 'round';
   c.lineJoin = 'round';
   c.strokeStyle = '#111';
