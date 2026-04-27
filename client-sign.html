@@ -274,8 +274,8 @@
   <!-- SIGNING FORM -->
   <div id="formState" style="display:none">
     <div class="form-body">
-      <div class="doc-title">📝 Renewal Declaration Form</div>
-      <div class="doc-sub">Work Permit Renewal — Ministry of Manpower</div>
+      <div class="doc-title" id="docTitle">📄 Document Signing</div>
+      <div class="doc-sub" id="docSub">Please review and sign below</div>
 
       <div class="info-grid" id="infoGrid"></div>
 
@@ -453,8 +453,57 @@ function showError(title, msg) {
   showScreen('errorState');
 }
 
+// Set the form's page heading (doc-title + doc-sub) based on what's being
+// signed. Called from renderForm at the start of every render so the heading
+// matches the actual document — never the misleading "Renewal Declaration
+// Form / Work Permit Renewal — Ministry of Manpower" hardcoded fallback.
+function setDocHeader(docType, documentType) {
+  const titleEl = document.getElementById('docTitle');
+  const subEl = document.getElementById('docSub');
+  if (!titleEl || !subEl) return;
+
+  // For booking_doc / bundle, the precise document is in `documentType`.
+  // For other docTypes, the docType itself tells us what's being signed.
+  const docTypeMap = {
+    ec_signing:                 ['📄 Employment Contract',     'Sign to confirm employment terms'],
+    declaration:                ['📝 Renewal Declaration Form', 'Work Permit Renewal — Ministry of Manpower'],
+    installment:                ['💳 Installment Agreement',    'Payment plan acknowledgement'],
+  };
+  const docTypeMapBookingDoc = {
+    employment:                  ['📄 Employment Contract',         'Sign to confirm employment terms'],
+    employment_contract:         ['📄 Employment Contract',         'Sign to confirm employment terms'],
+    service_agreement:           ['📋 Service Agreement',           'Agency service terms — please review'],
+    package_agreement:           ['📋 Package Agreement',           'Agreed service package — please review'],
+    fees_schedule:               ['💰 Services & Fees Schedule',    'Fee breakdown — please review'],
+    handover:                    ['🤝 Handing & Taking Over Form',  'Deployment handover'],
+    rest_day:                    ['📅 Weekly Rest Day Agreement',   'Rest day acknowledgement'],
+    safety:                      ['🛡 Safety Agreement (Annex F)',  'MOM safety acknowledgement'],
+    orientation:                 ['📋 FDW Orientation Checklist',   'Pre-deployment briefing'],
+    bundle_deployment:           ['📦 Deployment Document Bundle',  'Combined documents — please review and sign'],
+    bundle_deployment_fdw:       ['📦 Deployment Document Bundle',  'Combined documents — please review and sign'],
+    bundle_deployment_sponsor1:  ['📦 Deployment Document Bundle',  'Combined documents — please review and sign'],
+    bundle_deployment_sponsor2:  ['📦 Deployment Document Bundle',  'Combined documents — please review and sign'],
+  };
+
+  let pair = null;
+  if (docType === 'booking_doc' || (docType && docType.startsWith('booking_doc_'))) {
+    pair = docTypeMapBookingDoc[documentType] || null;
+  }
+  if (!pair) pair = docTypeMap[docType] || null;
+  if (!pair) pair = ['📄 Document Signing', 'Please review and sign below'];
+
+  titleEl.textContent = pair[0];
+  subEl.textContent = pair[1];
+}
+
 async function renderForm(d) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // Set the page heading dynamically based on docType + document_type so the
+  // user always sees the right document name. Previously hardcoded to
+  // "Renewal Declaration Form / Work Permit Renewal — Ministry of Manpower"
+  // which was misleading for EC signing, agreements, etc.
+  setDocHeader(docType, d?.document_type);
 
   if (docType === 'ec_signing') {
     // EC: render PDF pages as images using pdf.js
