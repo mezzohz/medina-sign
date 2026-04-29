@@ -848,16 +848,22 @@ async function submitSignature() {
       signature_image: base64,
       signed_at: new Date().toISOString(),
       status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending');
+    }).eq('token', signingData.token).eq('status', 'pending').select();
     error = res.error;
+    if (!error && (!res.data || res.data.length === 0)) {
+      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
+    }
   } else if (docType === 'booking_doc' || docType.startsWith('booking_doc_')) {
     const nowIso = new Date().toISOString();
     const res = await sb.from('signing_requests').update({
       signature_image: base64,
       signed_at: nowIso,
       status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending');
+    }).eq('token', signingData.token).eq('status', 'pending').select();
     error = res.error;
+    if (!error && (!res.data || res.data.length === 0)) {
+      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
+    }
     // ── Phase 4: propagate bundle signature to the matching MOM Declaration row ──
     // If this bundle signing is for a booking that also has a pending declaration
     // signing_requests row for the same signer_role, reuse the signature there so
@@ -885,8 +891,11 @@ async function submitSignature() {
       signature_image: base64,
       signed_at: new Date().toISOString(),
       status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending');
+    }).eq('token', signingData.token).eq('status', 'pending').select();
     error = res.error;
+    if (!error && (!res.data || res.data.length === 0)) {
+      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
+    }
   }
 
   if (error) {
