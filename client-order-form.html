@@ -802,6 +802,38 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         </div>
       </div>
 
+      <div class="field">
+        <label>Type of Dwelling <span class="req">*</span></label>
+        <select id="bDwellingType" onchange="toggleDwellingDetails()">
+          <option value="">— Select —</option>
+          <optgroup label="HDB">
+            <option value="HDB 1-Room">HDB 1-Room</option>
+            <option value="HDB 2-Room">HDB 2-Room</option>
+            <option value="HDB 3-Room">HDB 3-Room</option>
+            <option value="HDB 4-Room">HDB 4-Room</option>
+            <option value="HDB 5-Room">HDB 5-Room</option>
+            <option value="HDB Executive Apartment">HDB Executive Apartment</option>
+            <option value="HDB Maisonette">HDB Maisonette</option>
+          </optgroup>
+          <optgroup label="Private">
+            <option value="Private Apartment/Condominium">Private Apartment / Condominium</option>
+            <option value="Landed - Terrace">Landed - Terrace</option>
+            <option value="Landed - Semi-Detached">Landed - Semi-Detached</option>
+            <option value="Landed - Bungalow">Landed - Bungalow</option>
+          </optgroup>
+        </select>
+      </div>
+      <div id="dwellingDetailsRow" class="field-row" style="display:none">
+        <div class="field">
+          <label>Number of Rooms</label>
+          <input type="number" id="bDwellingRooms" min="1" max="20" placeholder="e.g. 3">
+        </div>
+        <div class="field">
+          <label>Number of Toilets</label>
+          <input type="number" id="bDwellingToilets" min="1" max="10" placeholder="e.g. 2">
+        </div>
+      </div>
+
       <div class="field-row">
         <div class="field">
           <label>Window Grilles Inside?</label>
@@ -1125,6 +1157,7 @@ async function submitOrder() {
     spouseName: document.getElementById('bSpouseName')?.value || '',
     spouseNric: document.getElementById('bSpouseNric')?.value || '',
     spouseDob: document.getElementById('bSpouseDob')?.value || '',
+    dwellingType: getDwellingType(),
     windowGrilles: document.getElementById('bWindowGrilles')?.value || '',
     exteriorCleaning: document.getElementById('bExteriorCleaning')?.value || '',
     sleepingArrangement: getSleepingArrangement(),
@@ -1172,6 +1205,7 @@ async function submitOrder() {
       spouse_name: order.spouseName || '',
       spouse_nric: order.spouseNric || '',
       spouse_dob: order.spouseDob || '',
+      dwelling_type: order.dwellingType || '',
       window_grilles: order.windowGrilles || '',
       exterior_cleaning: order.exteriorCleaning || '',
       sleeping_arrangement: order.sleepingArrangement || '',
@@ -1217,6 +1251,27 @@ async function submitOrder() {
   document.getElementById('progressWrap').style.display = 'none';
   document.getElementById('successWrap').style.display = 'block';
   document.getElementById('refDisplay').textContent = ref;
+}
+
+function toggleDwellingDetails() {
+  const sel = document.getElementById('bDwellingType').value;
+  const show = sel === 'Private Apartment/Condominium';
+  document.getElementById('dwellingDetailsRow').style.display = show ? 'flex' : 'none';
+  if (!show) { document.getElementById('bDwellingRooms').value = ''; document.getElementById('bDwellingToilets').value = ''; }
+}
+
+function getDwellingType() {
+  const base = document.getElementById('bDwellingType')?.value || '';
+  if (!base) return '';
+  if (base === 'Private Apartment/Condominium') {
+    const rooms = document.getElementById('bDwellingRooms')?.value || '';
+    const toilets = document.getElementById('bDwellingToilets')?.value || '';
+    const parts = [base];
+    if (rooms) parts.push(rooms + ' room' + (rooms > 1 ? 's' : ''));
+    if (toilets) parts.push(toilets + ' toilet' + (toilets > 1 ? 's' : ''));
+    return parts.join(', ');
+  }
+  return base;
 }
 
 function toggleSleepingOther(show) {
