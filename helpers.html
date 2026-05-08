@@ -665,7 +665,7 @@ async function runAiSearch() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4000,
         messages: [{ role: 'user', content: [{ type: 'text', text:
           `You are a domestic helper matching assistant for a Singapore maid agency.
