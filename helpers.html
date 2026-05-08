@@ -644,11 +644,16 @@ async function runAiSearch() {
 
   const profiles = allHelpers.map(h => {
     const age = calcAge(h.dob);
-    const ht = String(h.height||'').replace(/\s*cm$/i,'');
-    const wt = String(h.weight||'').replace(/\s*kg$/i,'');
+    const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || null;
+    const wt = parseFloat(String(h.weight||'').replace(/\s*kg$/i,'')) || null;
+    let bmi = null, build = null;
+    if (ht && wt) {
+      bmi = Math.round(wt / ((ht/100) ** 2) * 10) / 10;
+      build = bmi < 18.5 ? 'underweight' : bmi < 23 ? 'slim' : bmi < 25 ? 'average' : bmi < 30 ? 'heavy' : 'very heavy';
+    }
     return {
       id: h.id, name: h.full_name || '—', age: age || null,
-      height_cm: ht ? parseFloat(ht) : null, weight_kg: wt ? parseFloat(wt) : null,
+      height_cm: ht, weight_kg: wt, bmi, build,
       nationality: h.nationality || null, religion: h.religion || null,
       skills: { elderly: h.skill_elderly, infant: h.skill_infant, disabled: h.skill_disabled,
         housework: h.skill_housework, cooking: h.skill_cooking, language: h.skill_language },
