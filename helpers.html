@@ -666,7 +666,7 @@ async function runAiSearch() {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [{ role: 'user', content: [{ type: 'text', text:
           `You are a domestic helper matching assistant for a Singapore maid agency.
 
@@ -685,10 +685,10 @@ Analyze each helper against the employer's requirements. Consider:
 - Language abilities
 - Any other stated preferences
 
-Return ONLY a JSON array of matching helpers, sorted by best match first. Include ONLY helpers with relevance score >= 50. Each entry:
+Return ONLY a JSON array of ALL matching helpers, sorted by best match first. Include every helper with relevance score >= 50. Each entry:
 {"id":"helper_id","score":85,"reason":"Short 1-2 sentence explanation of why this helper matches"}
 
-Maximum 20 results. Return ONLY the JSON array, nothing else.`
+Return ONLY the JSON array, nothing else.`
         }] }]
       })
     });
