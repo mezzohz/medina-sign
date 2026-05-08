@@ -104,6 +104,25 @@
   .empty { text-align:center; padding:80px 20px; color:var(--muted); }
   .empty .icon { font-size:56px; margin-bottom:16px; }
 
+  /* AI SEARCH */
+  .ai-panel { max-height:0; overflow:hidden; transition:max-height 0.3s ease; background:linear-gradient(135deg,#f0fdfa,#f0f9ff); border-bottom:1px solid var(--border); }
+  .ai-panel.open { max-height:500px; }
+  .ai-inner { max-width:800px; margin:0 auto; padding:20px; }
+  .ai-textarea { width:100%; min-height:100px; padding:14px; border:1.5px solid var(--border); border-radius:12px; font-family:'Outfit',sans-serif; font-size:13px; line-height:1.6; resize:vertical; color:var(--dark); background:#fff; }
+  .ai-textarea:focus { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(13,115,119,0.1); }
+  .ai-textarea::placeholder { color:#94a3b8; }
+  .ai-actions { display:flex; gap:10px; margin-top:12px; align-items:center; flex-wrap:wrap; }
+  .ai-btn { padding:10px 24px; background:linear-gradient(135deg,#0D7377,#0a9396); color:#fff; border:none; border-radius:10px; font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .ai-btn:hover { opacity:0.9; }
+  .ai-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .ai-match { display:inline-block; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:700; margin-top:6px; line-height:1.3; }
+  .ai-match-high { background:#ecfdf5; color:#059669; }
+  .ai-match-med { background:#fffbeb; color:#d97706; }
+  .ai-match-low { background:#f0f9ff; color:#0369a1; }
+  .ai-login-box { background:#fff; border:1.5px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; max-width:360px; }
+  .ai-login-box input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; margin-bottom:8px; }
+  .ai-login-box input:focus { outline:none; border-color:var(--teal); }
+
   /* MANAGE MODE */
   .card.selectable { cursor:pointer; position:relative; }
   .card.selectable:hover { border-color:#f97316; }
@@ -143,7 +162,29 @@
       <div class="sub">Available Helpers — Browse and enquire</div>
     </div>
   </div>
+  <!-- AI Search Panel (admin only, injected by JS) -->
+  <div class="ai-panel" id="aiPanel">
+    <div class="ai-inner">
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:var(--dark)">🤖 AI Helper Search</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Describe your client's requirements — care needs, age, body type, cooking, experience, availability, etc.</div>
+      <textarea class="ai-textarea" id="aiInput" placeholder="e.g. Elderly care - nearly 90yo in wheelchair, needs someone who can cook, prefer slim build, age 35-45, expected arrival mid July"></textarea>
+      <div class="ai-actions">
+        <button class="ai-btn" id="aiBtn" onclick="runAiSearch()">🔍 Find Matching Helpers</button>
+        <button onclick="clearAiResults()" style="padding:10px 16px;background:#fff;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)">Clear</button>
+        <span id="aiStatus" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div id="aiLoginBox" style="display:none" class="ai-login-box">
+        <div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px">Sign in to use AI Search</div>
+        <input type="email" id="aiEmail" placeholder="Email">
+        <input type="password" id="aiPassword" placeholder="Password" onkeydown="if(event.key==='Enter')aiLogin()">
+        <button class="ai-btn" onclick="aiLogin()" style="width:100%;justify-content:center">Sign In</button>
+        <div id="aiLoginErr" style="font-size:12px;color:#dc2626;margin-top:6px;display:none"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="filters">
+    <button onclick="toggleAiPanel()" id="aiToggleBtn" style="display:none;padding:8px 16px;background:linear-gradient(135deg,#0D7377,#0a9396);border:none;color:#fff;border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🤖 AI Search</button>
     <input type="text" id="searchInput" placeholder="🔍  Search by name, nationality..." oninput="renderHelpers()">
     <select id="filterNationality" onchange="renderHelpers()">
       <option value="">All Nationalities</option>
@@ -272,7 +313,10 @@ async function loadHelpers() {
     .select('*').eq('status', 'active').order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   allHelpers = data || [];
-  if (isAdmin) document.getElementById('adminBar').style.display = 'flex';
+  if (isAdmin) {
+    document.getElementById('adminBar').style.display = 'flex';
+    document.getElementById('aiToggleBtn').style.display = '';
+  }
   renderHelpers();
 }
 
@@ -287,6 +331,7 @@ function renderHelpers() {
   const exp = document.getElementById('filterExp')?.value || '';
 
   let filtered = allHelpers.filter(h => {
+    if (aiResults && !aiResults[h.id]) return false;
     if (search && !(h.full_name||'').toLowerCase().includes(search) &&
         !(h.fdw_code||'').toLowerCase().includes(search) &&
         !(h.nationality||'').toLowerCase().includes(search)) return false;
@@ -319,6 +364,9 @@ function renderHelpers() {
 
     return true;
   });
+  if (aiResults) {
+    filtered.sort((a, b) => (aiResults[a.id]?.rank || 999) - (aiResults[b.id]?.rank || 999));
+  }
 
   document.getElementById('resultCount').textContent = filtered.length + ' helper' + (filtered.length !== 1 ? 's' : '') + ' found';
 
@@ -360,6 +408,7 @@ function renderHelpers() {
           ${parseInt(h.skill_housework) >= 3 ? `<span class="tag tag-skill">Housework</span>` : ''}
           <span class="tag tag-avail">Available</span>
         </div>
+        ${aiResults && aiResults[h.id] ? `<div class="ai-match ${aiResults[h.id].score >= 80 ? 'ai-match-high' : aiResults[h.id].score >= 60 ? 'ai-match-med' : 'ai-match-low'}">#${aiResults[h.id].rank} — ${aiResults[h.id].reason}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -530,6 +579,134 @@ async function deleteSelected() {
   allHelpers = allHelpers.filter(h => !ids.includes(h.id));
   selectedIds.clear();
   toggleManageMode();
+}
+
+// ── AI SEARCH ──────────────────────────────────────────────────────────────
+const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
+let aiResults = null;
+let aiSession = null;
+
+function toggleAiPanel() {
+  const panel = document.getElementById('aiPanel');
+  const btn = document.getElementById('aiToggleBtn');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    btn.style.background = '#059669';
+    document.getElementById('aiInput').focus();
+  } else {
+    btn.style.background = 'linear-gradient(135deg,#0D7377,#0a9396)';
+  }
+}
+
+function clearAiResults() {
+  document.getElementById('aiInput').value = '';
+  document.getElementById('aiStatus').textContent = '';
+  aiResults = null;
+  renderHelpers();
+}
+
+async function aiLogin() {
+  const email = document.getElementById('aiEmail').value.trim();
+  const pw = document.getElementById('aiPassword').value;
+  const err = document.getElementById('aiLoginErr');
+  if (!email || !pw) { err.textContent = 'Enter email and password'; err.style.display = 'block'; return; }
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if (error) throw error;
+    aiSession = data.session;
+    document.getElementById('aiLoginBox').style.display = 'none';
+    document.getElementById('aiStatus').textContent = 'Signed in — running search...';
+    runAiSearch();
+  } catch (e) {
+    err.textContent = e.message || 'Login failed'; err.style.display = 'block';
+  }
+}
+
+async function ensureAiAuth() {
+  if (aiSession) return aiSession.access_token;
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) { aiSession = session; return session.access_token; }
+  document.getElementById('aiLoginBox').style.display = 'block';
+  document.getElementById('aiEmail').focus();
+  return null;
+}
+
+async function runAiSearch() {
+  const query = document.getElementById('aiInput').value.trim();
+  if (!query) return;
+  const token = await ensureAiAuth();
+  if (!token) return;
+
+  const btn = document.getElementById('aiBtn');
+  const status = document.getElementById('aiStatus');
+  btn.disabled = true; btn.textContent = '⏳ Searching...';
+  status.textContent = 'Analyzing ' + allHelpers.length + ' profiles...';
+
+  const profiles = allHelpers.map(h => {
+    const age = calcAge(h.dob);
+    const ht = String(h.height||'').replace(/\s*cm$/i,'');
+    const wt = String(h.weight||'').replace(/\s*kg$/i,'');
+    return {
+      id: h.id, name: h.full_name || '—', age: age || null,
+      height_cm: ht ? parseFloat(ht) : null, weight_kg: wt ? parseFloat(wt) : null,
+      nationality: h.nationality || null, religion: h.religion || null,
+      skills: { elderly: h.skill_elderly, infant: h.skill_infant, disabled: h.skill_disabled,
+        housework: h.skill_housework, cooking: h.skill_cooking, language: h.skill_language },
+      exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
+            h.exp_tw?'TW:'+h.exp_tw:'', h.exp_me?'ME:'+h.exp_me:'', h.exp_home?'Home:'+h.exp_home:'']
+            .filter(Boolean).join('; ') || 'Fresh',
+      cooking: h.cooking_cuisines || null, languages: h.spoken_languages || null,
+      work: h.work_desc || null, food: h.food_handling || null
+    };
+  });
+
+  try {
+    const resp = await fetch(CLAUDE_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: [{ type: 'text', text:
+          `You are a domestic helper matching assistant for a Singapore maid agency.
+
+EMPLOYER REQUIREMENTS:
+${query}
+
+AVAILABLE HELPERS (${profiles.length} profiles):
+${JSON.stringify(profiles)}
+
+Analyze each helper against the employer's requirements. Consider:
+- Care needs (elderly, infant, disabled) vs helper skills and experience
+- Age preferences vs helper age
+- Body type/size preferences vs height and weight
+- Cooking needs vs cooking skills and cuisines
+- Experience preferences
+- Language abilities
+- Any other stated preferences
+
+Return ONLY a JSON array of matching helpers, sorted by best match first. Include ONLY helpers with relevance score >= 50. Each entry:
+{"id":"helper_id","score":85,"reason":"Short 1-2 sentence explanation of why this helper matches"}
+
+Maximum 20 results. Return ONLY the JSON array, nothing else.`
+        }] }]
+      })
+    });
+    const result = await resp.json();
+    if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    const aiText = result.content?.find(c => c.type === 'text')?.text || '';
+    const jsonMatch = aiText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('No matches found');
+    const matches = JSON.parse(jsonMatch[0]);
+    aiResults = {};
+    matches.forEach((m, i) => { aiResults[m.id] = { rank: i + 1, score: m.score, reason: m.reason }; });
+    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found';
+    renderHelpers();
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    console.error('AI search error:', e);
+  }
+  btn.disabled = false; btn.textContent = '🔍 Find Matching Helpers';
 }
 
 async function deletePortalHelper(id, name) {
