@@ -720,11 +720,15 @@ Return ONLY the JSON, nothing else.`
     }
 
     // ── STEP 3: AI ranking of pre-filtered candidates (Haiku — fast) ──
-    const profiles = candidates.map(h => {
+    // Use short numeric IDs so the AI can't corrupt UUIDs
+    const idMap = {};
+    const profiles = candidates.map((h, idx) => {
+      const n = idx + 1;
+      idMap[n] = h.id;
       const age = calcAge(h.dob);
       const { bmi, build } = helperBmi(h);
       return {
-        id: h.id, name: h.full_name || '—', age, bmi, build,
+        n, name: h.full_name || '—', age, bmi, build,
         skills: { elderly: h.skill_elderly, infant: h.skill_infant, cooking: h.skill_cooking,
           housework: h.skill_housework, disabled: h.skill_disabled },
         exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
@@ -747,10 +751,10 @@ Return ONLY the JSON, nothing else.`
 CANDIDATES (already filtered by hard criteria):
 ${JSON.stringify(profiles)}
 
-Score each 50-100 based on overall fit. Higher score = better match.
-Return ONLY a JSON array sorted by score descending:
-[{"id":"...","score":90,"reason":"Key stats: age X, BMI Y, Z years elderly care experience"}]
-Return ONLY the JSON array.`
+You MUST include ALL candidates in your response. Score each 50-100 based on overall fit.
+Return ONLY a JSON array sorted by score descending. Use the "n" field as the identifier:
+[{"n":1,"score":90,"reason":"Key stats: age X, BMI Y, Z years elderly care experience"}]
+Return ONLY the JSON array. Include every candidate.`
         }] }]
       })
     });
@@ -761,7 +765,10 @@ Return ONLY the JSON array.`
     if (!rankMatch) throw new Error('No ranking returned');
     const matches = JSON.parse(rankMatch[0]);
     aiResults = {};
-    matches.forEach((m, i) => { aiResults[m.id] = { rank: i + 1, score: m.score, reason: m.reason }; });
+    matches.forEach((m, i) => {
+      const realId = idMap[m.n];
+      if (realId) aiResults[realId] = { rank: i + 1, score: m.score, reason: m.reason };
+    });
     status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found (from ' + allHelpers.length + ' profiles)';
     renderHelpers();
   } catch (e) {
