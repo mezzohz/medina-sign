@@ -631,6 +631,15 @@ async function ensureAiAuth() {
   return null;
 }
 
+function helperBmi(h) {
+  const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || 0;
+  const wt = parseFloat(String(h.weight||'').replace(/\s*kg$/i,'')) || 0;
+  if (!ht || !wt) return { bmi: null, build: null };
+  const bmi = Math.round(wt / ((ht/100) ** 2) * 10) / 10;
+  const build = bmi < 18.5 ? 'underweight' : bmi < 23 ? 'slim' : bmi < 25 ? 'average' : bmi < 30 ? 'heavy' : 'very heavy';
+  return { bmi, build };
+}
+
 async function runAiSearch() {
   const query = document.getElementById('aiInput').value.trim();
   if (!query) return;
@@ -639,74 +648,124 @@ async function runAiSearch() {
 
   const btn = document.getElementById('aiBtn');
   const status = document.getElementById('aiStatus');
-  btn.disabled = true; btn.textContent = '⏳ Searching...';
-  status.textContent = 'Analyzing ' + allHelpers.length + ' profiles...';
-
-  const profiles = allHelpers.map(h => {
-    const age = calcAge(h.dob);
-    const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || null;
-    const wt = parseFloat(String(h.weight||'').replace(/\s*kg$/i,'')) || null;
-    let bmi = null, build = null;
-    if (ht && wt) {
-      bmi = Math.round(wt / ((ht/100) ** 2) * 10) / 10;
-      build = bmi < 18.5 ? 'underweight' : bmi < 23 ? 'slim' : bmi < 25 ? 'average' : bmi < 30 ? 'heavy' : 'very heavy';
-    }
-    return {
-      id: h.id, name: h.full_name || '—', age: age || null,
-      height_cm: ht, weight_kg: wt, bmi, build,
-      nationality: h.nationality || null, religion: h.religion || null,
-      skills: { elderly: h.skill_elderly, infant: h.skill_infant, disabled: h.skill_disabled,
-        housework: h.skill_housework, cooking: h.skill_cooking, language: h.skill_language },
-      exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
-            h.exp_tw?'TW:'+h.exp_tw:'', h.exp_me?'ME:'+h.exp_me:'', h.exp_home?'Home:'+h.exp_home:'']
-            .filter(Boolean).join('; ') || 'Fresh',
-      cooking: h.cooking_cuisines || null, languages: h.spoken_languages || null,
-      work: h.work_desc || null, food: h.food_handling || null
-    };
-  });
+  btn.disabled = true; btn.textContent = '⏳ Parsing...';
+  status.textContent = 'Step 1/2 — extracting criteria...';
 
   try {
-    const resp = await fetch(CLAUDE_PROXY, {
+    // ── STEP 1: Parse query into structured filters (Haiku — fast) ──
+    const parseResp = await fetch(CLAUDE_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
         messages: [{ role: 'user', content: [{ type: 'text', text:
-          `You are a strict domestic helper matching assistant for a Singapore maid agency.
+          `Extract structured search criteria from this employer request. Return ONLY a JSON object.
 
-EMPLOYER REQUIREMENTS:
-${query}
+"${query}"
 
-AVAILABLE HELPERS (${profiles.length} profiles):
-${JSON.stringify(profiles)}
+Fields (use null if not mentioned):
+{"age_min":null,"age_max":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me"],"nationality":null,"religion":null}
 
-STRICT FILTERING RULES — you MUST follow these:
-1. AGE: If employer specifies an age range, EXCLUDE any helper outside that range. No exceptions.
-2. SKILLS: If employer needs a specific care type (elderly, infant, disabled), EXCLUDE helpers with skill rating below 3 or "N.A" for that skill. The helper must have proven experience.
-3. BODY TYPE: If employer wants slim/fit, ONLY include helpers with build "slim" or "underweight". EXCLUDE "average", "heavy", "very heavy".
-4. COOKING: If employer needs cooking, EXCLUDE helpers with cooking skill below 3.
-5. EXPERIENCE: If employer specifies experience requirements, enforce them strictly.
+- age_min/age_max: number or null
+- build: "slim" if they want slim/fit/small/thin/petite, "any" otherwise
+- skills_required: only include skills they explicitly need
+- experience: only include if they want specific country experience
+- nationality/religion: only if specified
 
-After applying all hard filters above, score the remaining helpers 50-100 based on how well they match additional preferences.
-
-Return ONLY a JSON array of matching helpers sorted by score descending. Each entry:
-{"id":"helper_id","score":85,"reason":"Short explanation with key stats (age, BMI, skills)"}
-
-If no helpers match all criteria, return an empty array [].
-Return ONLY the JSON array, nothing else.`
+Return ONLY the JSON, nothing else.`
         }] }]
       })
     });
-    const result = await resp.json();
-    if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
-    const aiText = result.content?.find(c => c.type === 'text')?.text || '';
-    const jsonMatch = aiText.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No matches found');
-    const matches = JSON.parse(jsonMatch[0]);
+    const parseResult = await parseResp.json();
+    if (parseResult.error) throw new Error(parseResult.error.message || JSON.stringify(parseResult.error));
+    const parseText = parseResult.content?.find(c => c.type === 'text')?.text || '';
+    const criteriaMatch = parseText.match(/\{[\s\S]*\}/);
+    const criteria = criteriaMatch ? JSON.parse(criteriaMatch[0]) : {};
+
+    // ── STEP 2: Pre-filter in JavaScript ──
+    let candidates = allHelpers.filter(h => {
+      const age = calcAge(h.dob);
+      if (criteria.age_min && age && age < criteria.age_min) return false;
+      if (criteria.age_max && age && age > criteria.age_max) return false;
+      if (criteria.build === 'slim') {
+        const { build } = helperBmi(h);
+        if (build && build !== 'slim' && build !== 'underweight') return false;
+      }
+      if (Array.isArray(criteria.skills_required)) {
+        const skillMap = { elderly:'skill_elderly', infant:'skill_infant', cooking:'skill_cooking',
+          housework:'skill_housework', disabled:'skill_disabled' };
+        for (const sk of criteria.skills_required) {
+          const col = skillMap[sk];
+          if (col) { const v = parseInt(h[col]); if (isNaN(v) || v < 3) return false; }
+        }
+      }
+      if (Array.isArray(criteria.experience)) {
+        const expMap = { sg:'exp_sg', my:'exp_my', hk:'exp_hk', tw:'exp_tw', me:'exp_me' };
+        for (const ex of criteria.experience) {
+          if (expMap[ex] && !h[expMap[ex]]) return false;
+        }
+      }
+      if (criteria.nationality && (h.nationality||'').toLowerCase() !== criteria.nationality.toLowerCase()) return false;
+      if (criteria.religion && (h.religion||'').toLowerCase() !== criteria.religion.toLowerCase()) return false;
+      return true;
+    });
+
+    status.textContent = `Step 2/2 — ranking ${candidates.length} candidates (filtered from ${allHelpers.length})...`;
+    btn.textContent = '⏳ Ranking...';
+
+    if (!candidates.length) {
+      aiResults = {};
+      status.textContent = '0 matches — no helpers meet all criteria';
+      renderHelpers();
+      btn.disabled = false; btn.textContent = '🔍 Find Matching Helpers';
+      return;
+    }
+
+    // ── STEP 3: AI ranking of pre-filtered candidates (Haiku — fast) ──
+    const profiles = candidates.map(h => {
+      const age = calcAge(h.dob);
+      const { bmi, build } = helperBmi(h);
+      return {
+        id: h.id, name: h.full_name || '—', age, bmi, build,
+        skills: { elderly: h.skill_elderly, infant: h.skill_infant, cooking: h.skill_cooking,
+          housework: h.skill_housework, disabled: h.skill_disabled },
+        exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
+              h.exp_me?'ME:'+h.exp_me:'', h.exp_home?'Home:'+h.exp_home:''].filter(Boolean).join('; ') || 'Fresh',
+        cooking: h.cooking_cuisines || null, languages: h.spoken_languages || null,
+        work: (h.work_desc || '').slice(0, 150)
+      };
+    });
+
+    const rankResp = await fetch(CLAUDE_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: [{ type: 'text', text:
+          `Rank these pre-filtered helper candidates for this employer request:
+"${query}"
+
+CANDIDATES (already filtered by hard criteria):
+${JSON.stringify(profiles)}
+
+Score each 50-100 based on overall fit. Higher score = better match.
+Return ONLY a JSON array sorted by score descending:
+[{"id":"...","score":90,"reason":"Key stats: age X, BMI Y, Z years elderly care experience"}]
+Return ONLY the JSON array.`
+        }] }]
+      })
+    });
+    const rankResult = await rankResp.json();
+    if (rankResult.error) throw new Error(rankResult.error.message || JSON.stringify(rankResult.error));
+    const rankText = rankResult.content?.find(c => c.type === 'text')?.text || '';
+    const rankMatch = rankText.match(/\[[\s\S]*\]/);
+    if (!rankMatch) throw new Error('No ranking returned');
+    const matches = JSON.parse(rankMatch[0]);
     aiResults = {};
     matches.forEach((m, i) => { aiResults[m.id] = { rank: i + 1, score: m.score, reason: m.reason }; });
-    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found';
+    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found (from ' + allHelpers.length + ' profiles)';
     renderHelpers();
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
