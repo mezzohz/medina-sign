@@ -186,13 +186,7 @@
   <div class="filters">
     <button onclick="toggleAiPanel()" id="aiToggleBtn" style="display:none;padding:8px 16px;background:linear-gradient(135deg,#0D7377,#0a9396);border:none;color:#fff;border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🤖 AI Search</button>
     <input type="text" id="searchInput" placeholder="🔍  Search by name, nationality..." oninput="renderHelpers()">
-    <select id="filterNationality" onchange="renderHelpers()">
-      <option value="">All Nationalities</option>
-      <option value="Indonesian">Indonesian</option>
-      <option value="Filipino">Filipino</option>
-      <option value="Myanmar">Myanmar</option>
-      <option value="Indian">Indian</option>
-    </select>
+    <input type="number" id="filterHeightMin" placeholder="Min height (cm)" min="140" max="180" oninput="renderHelpers()" style="width:130px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
     <div style="display:flex;align-items:center;gap:6px">
       <input type="number" id="filterAgeMin" placeholder="Min age" min="18" max="60" oninput="renderHelpers()" style="width:90px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
       <span style="color:var(--muted);font-size:13px">–</span>
@@ -327,15 +321,18 @@ function calcAge(dob) {
 
 function renderHelpers() {
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
-  const nat = document.getElementById('filterNationality')?.value || '';
   const exp = document.getElementById('filterExp')?.value || '';
+  const heightMin = parseInt(document.getElementById('filterHeightMin')?.value) || null;
 
   let filtered = allHelpers.filter(h => {
     if (aiResults && !aiResults[h.id]) return false;
     if (search && !(h.full_name||'').toLowerCase().includes(search) &&
         !(h.fdw_code||'').toLowerCase().includes(search) &&
         !(h.nationality||'').toLowerCase().includes(search)) return false;
-    if (nat && (h.nationality||'').toLowerCase() !== nat.toLowerCase()) return false;
+    if (heightMin) {
+      const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || 0;
+      if (!ht || ht < heightMin) return false;
+    }
 
     // Age range filter
     const ageMin = parseInt(document.getElementById('filterAgeMin')?.value) || null;
