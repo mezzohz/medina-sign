@@ -673,7 +673,7 @@ async function runAiSearch() {
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
         messages: [{ role: 'user', content: [{ type: 'text', text:
-          `You are a domestic helper matching assistant for a Singapore maid agency.
+          `You are a strict domestic helper matching assistant for a Singapore maid agency.
 
 EMPLOYER REQUIREMENTS:
 ${query}
@@ -681,18 +681,19 @@ ${query}
 AVAILABLE HELPERS (${profiles.length} profiles):
 ${JSON.stringify(profiles)}
 
-Analyze each helper against the employer's requirements. Consider:
-- Care needs (elderly, infant, disabled) vs helper skills and experience
-- Age preferences vs helper age
-- Body type/size preferences vs height and weight
-- Cooking needs vs cooking skills and cuisines
-- Experience preferences
-- Language abilities
-- Any other stated preferences
+STRICT FILTERING RULES — you MUST follow these:
+1. AGE: If employer specifies an age range, EXCLUDE any helper outside that range. No exceptions.
+2. SKILLS: If employer needs a specific care type (elderly, infant, disabled), EXCLUDE helpers with skill rating below 3 or "N.A" for that skill. The helper must have proven experience.
+3. BODY TYPE: If employer wants slim/fit, ONLY include helpers with build "slim" or "underweight". EXCLUDE "average", "heavy", "very heavy".
+4. COOKING: If employer needs cooking, EXCLUDE helpers with cooking skill below 3.
+5. EXPERIENCE: If employer specifies experience requirements, enforce them strictly.
 
-Return ONLY a JSON array of ALL matching helpers, sorted by best match first. Include every helper with relevance score >= 50. Each entry:
-{"id":"helper_id","score":85,"reason":"Short 1-2 sentence explanation of why this helper matches"}
+After applying all hard filters above, score the remaining helpers 50-100 based on how well they match additional preferences.
 
+Return ONLY a JSON array of matching helpers sorted by score descending. Each entry:
+{"id":"helper_id","score":85,"reason":"Short explanation with key stats (age, BMI, skills)"}
+
+If no helpers match all criteria, return an empty array [].
 Return ONLY the JSON array, nothing else.`
         }] }]
       })
