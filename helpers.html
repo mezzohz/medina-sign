@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Force fresh HTML on every visit so portal updates land without staff having to hard-refresh. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Medina Recruitment Consultant — Helper Profiles</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -64,7 +68,8 @@
   .card-photo { width:100%; aspect-ratio:3/4; object-fit:cover; object-position:top center; background:#e2e8f0; display:block; }
   .card-photo-placeholder { width:100%; aspect-ratio:3/4; background:linear-gradient(135deg,#e2e8f0,#f1f5f9); display:flex; align-items:center; justify-content:center; font-size:64px; color:#cbd5e1; }
   .card-body { padding:14px 16px 16px; }
-  .card-name { font-weight:700; font-size:15px; color:var(--dark); margin-bottom:6px; line-height:1.3; }
+  .card-name { font-weight:700; font-size:15px; color:var(--dark); margin-bottom:2px; line-height:1.3; }
+  .card-code { font-size:12px; color:var(--teal); font-weight:600; margin-bottom:6px; letter-spacing:0.3px; }
   .card-tags { display:flex; flex-wrap:wrap; gap:5px; }
   .tag { padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; }
   .tag-nat   { background:#f0f9ff; color:#0369a1; }
@@ -319,6 +324,20 @@ function calcAge(dob) {
   return Math.floor((Date.now() - new Date(dob)) / 31557600000);
 }
 
+// Treat blanks and biodata placeholders ("None", "No", "No previous experience", etc.)
+// as no real experience so the "Ex Singapore"/"Ex Malaysia"/etc. tag only shows when the
+// helper genuinely worked in that country. Mirrors the same helper used in medina-crm.
+function hasRealExp(val) {
+  if (!val) return false;
+  const s = String(val).trim().toLowerCase();
+  if (!s) return false;
+  if (['none','no','n/a','n.a','n.a.','nil','-','—','null','undefined','tidak ada','tidak'].includes(s)) return false;
+  if (/^no\b/.test(s)) return false;
+  if (/never\s+worked/.test(s)) return false;
+  if (/no\s+(previous|prior|past)\s+experience/.test(s)) return false;
+  return true;
+}
+
 function renderHelpers() {
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const exp = document.getElementById('filterExp')?.value || '';
@@ -390,15 +409,16 @@ function renderHelpers() {
         : `<div class="card-photo-placeholder">${name[0]}</div>`}
       <div class="card-body">
         <div class="card-name">${name}</div>
+        <div class="card-code">${h.fdw_code && h.fdw_code.trim() ? h.fdw_code : `<span style="color:#94a3b8">#${h.id.slice(0, 8)}</span>`}</div>
         <div class="card-tags">
           ${nat ? `<span class="tag tag-nat">${nat}</span>` : ''}
           ${age ? `<span class="tag tag-age">${age} yrs</span>` : ''}
           ${rel ? `<span class="tag tag-rel">${rel}</span>` : ''}
-          ${h.exp_sg ? `<span class="tag tag-exp">Ex Singapore</span>` : ''}
-          ${h.exp_hk ? `<span class="tag tag-exp">Ex Hong Kong</span>` : ''}
-          ${h.exp_tw ? `<span class="tag tag-exp">Ex Taiwan</span>` : ''}
-          ${h.exp_my ? `<span class="tag tag-exp">Ex Malaysia</span>` : ''}
-          ${h.exp_me ? `<span class="tag tag-exp">Ex Middle East</span>` : ''}
+          ${hasRealExp(h.exp_sg) ? `<span class="tag tag-exp">Ex Singapore</span>` : ''}
+          ${hasRealExp(h.exp_hk) ? `<span class="tag tag-exp">Ex Hong Kong</span>` : ''}
+          ${hasRealExp(h.exp_tw) ? `<span class="tag tag-exp">Ex Taiwan</span>` : ''}
+          ${hasRealExp(h.exp_my) ? `<span class="tag tag-exp">Ex Malaysia</span>` : ''}
+          ${hasRealExp(h.exp_me) ? `<span class="tag tag-exp">Ex Middle East</span>` : ''}
           ${parseInt(h.skill_elderly) >= 3 ? `<span class="tag tag-skill">Elder Care</span>` : ''}
           ${parseInt(h.skill_infant) >= 3 ? `<span class="tag tag-skill">Child Care</span>` : ''}
           ${parseInt(h.skill_cooking) >= 3 ? `<span class="tag tag-skill">Cooking</span>` : ''}
@@ -439,7 +459,7 @@ function openProfile(id) {
           : `<div class="profile-photo-placeholder">${name[0]}</div>`}
         <div class="profile-info">
           <h2>${name}</h2>
-          <div class="code">${h.fdw_code || ''}</div>
+          <div class="code">${h.fdw_code && h.fdw_code.trim() ? h.fdw_code : `<span style="color:#94a3b8">#${h.id.slice(0, 8)}</span>`}</div>
           <div class="profile-info-tags">
             <span class="tag tag-nat">${nat}</span>
             ${age ? `<span class="tag tag-age">${age} years old</span>` : ''}
