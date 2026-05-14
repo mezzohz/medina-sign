@@ -371,12 +371,14 @@ function renderHelpers() {
     }
 
     // Experience filter
-    if (exp === 'sg' && !h.exp_sg) return false;
-    if (exp === 'hk' && !h.exp_hk) return false;
-    if (exp === 'tw' && !h.exp_tw) return false;
-    if (exp === 'my' && !h.exp_my) return false;
-    if (exp === 'me' && !h.exp_me) return false;
-    if (exp === 'fresh' && (h.exp_sg || h.exp_hk || h.exp_tw || h.exp_my || h.exp_me)) return false;
+    // Use hasRealExp() so the filter agrees with the Ex-Country tag display —
+    // both ignore biodata placeholders like "No previous Singapore experience".
+    if (exp === 'sg' && !hasRealExp(h.exp_sg)) return false;
+    if (exp === 'hk' && !hasRealExp(h.exp_hk)) return false;
+    if (exp === 'tw' && !hasRealExp(h.exp_tw)) return false;
+    if (exp === 'my' && !hasRealExp(h.exp_my)) return false;
+    if (exp === 'me' && !hasRealExp(h.exp_me)) return false;
+    if (exp === 'fresh' && (hasRealExp(h.exp_sg) || hasRealExp(h.exp_hk) || hasRealExp(h.exp_tw) || hasRealExp(h.exp_my) || hasRealExp(h.exp_me))) return false;
 
     return true;
   });
