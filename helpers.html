@@ -215,7 +215,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict-c</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict-d</div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -363,14 +363,15 @@ function buildExperienceText(h) {
     .join(' \n ');
 }
 
-// Strict-mode check for elder / child care. Different rules for
-// experienced vs fresh helpers:
+// Strict-mode check for elder / child care.
 //   ELDER CARE
 //     - experienced: ELDER_KEYWORDS in any work text
 //     - fresh: star rating (>=3 enforced upstream) is the only signal
 //   CHILD CARE
-//     - experienced: CHILDCARE_VERBS + CHILD_NOUNS in same sentence
-//     - fresh: own children > 0 (real-life parenting proxy)
+//     - own children > 0: always passes (parenting = real experience,
+//       regardless of work history)
+//     - otherwise experienced: CHILDCARE_VERBS + CHILD_NOUNS in same sentence
+//     - otherwise fresh + no own kids: excluded
 function hasSkillExperience(h, skillCol) {
   const text = buildExperienceText(h);
   const isFresh = !text;
@@ -381,9 +382,11 @@ function hasSkillExperience(h, skillCol) {
     return ELDER_KEYWORDS.test(text);
   }
   if (skillCol === 'skill_infant') {
-    if (isFresh) return ownChildren > 0; // own children = real parenting
-    // Experienced: caregiving verb must be in SAME sentence as child noun.
-    // Avoids "Worked as cleaner. Family had 2 children" false positive.
+    if (ownChildren > 0) return true; // own children always counts
+    if (isFresh) return false; // fresh + no own kids = no evidence
+    // Experienced without own kids: caregiving verb must be in SAME
+    // sentence as child noun. Avoids "Worked as cleaner. Family had 2
+    // children" false positive.
     const sentences = text.split(/[.!?\n]+/);
     return sentences.some(s => CHILD_NOUNS.test(s) && CHILDCARE_VERBS.test(s));
   }
