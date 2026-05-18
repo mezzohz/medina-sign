@@ -215,7 +215,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict-b</div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -483,6 +483,14 @@ function openProfile(id) {
   const overlay = document.createElement('div');
   overlay.className = 'profile-overlay';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  // Close on Escape — listener removes itself when overlay is gone
+  const escHandler = e => {
+    if (e.key === 'Escape') {
+      overlay.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
   overlay.innerHTML = `
     <div class="profile-card" style="position:relative">
       <button class="profile-close" onclick="this.closest('.profile-overlay').remove()">✕</button>
