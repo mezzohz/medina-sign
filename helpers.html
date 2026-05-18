@@ -215,7 +215,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.14-a</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict</div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -340,6 +340,31 @@ function hasRealExp(val) {
   return true;
 }
 
+// Strict-mode keyword detectors for elderly and infant/child care experience.
+// English + Indonesian/Malay + Filipino terms so biodata written in helper
+// or agency dialect still matches. Cooking and housework intentionally NOT
+// gated — every helper is assumed suitable for general housework, and
+// cooking is also kept lenient (rating only).
+const ELDER_KEYWORDS = /\b(elder(ly|s)?|senior\s*(citizen|s)?|grandm(a|other|um|y)|grandp(a|arent|ops)?|granny|grandfather|stroke|dementia|alzheimer|bedridden|wheelchair|paralyz|aged\s+(person|couple|lady|man)|old\s+(person|woman|man|lady|gentleman|couple|folks?)|oma|opa|lansia|nenek|kakek|warga\s+emas|lola|lolo|matanda)\b/i;
+const CHILD_KEYWORDS = /\b(child(ren|care)?|kid(s|do)?|infant|baby|babies|toddler|newborn|kindergart|preschool|school[-\s]*(age|going|boy|girl|kid)|young\s+(boy|girl|kid|son|daughter)|months?\s+old|years?\s+old|anak|bayi|balita|kanak[-\s]*kanak|sanggol|bata|batang)\b/i;
+
+// Concatenate every text field that might describe what the helper actually did
+function buildExperienceText(h) {
+  return [h.exp_sg, h.exp_my, h.exp_hk, h.exp_tw, h.exp_me, h.exp_home, h.work_desc]
+    .filter(v => hasRealExp(v))
+    .join(' \n ');
+}
+
+// Strict-mode check: does the helper have ANY text evidence of doing
+// elderly / child care work? Used by the filter and the AI pre-filter.
+function hasSkillExperience(h, skillCol) {
+  const text = buildExperienceText(h);
+  if (!text) return false;
+  if (skillCol === 'skill_elderly') return ELDER_KEYWORDS.test(text);
+  if (skillCol === 'skill_infant')  return CHILD_KEYWORDS.test(text);
+  return true; // cooking / housework / others: not gated
+}
+
 function renderHelpers() {
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const exp = document.getElementById('filterExp')?.value || '';
@@ -365,11 +390,15 @@ function renderHelpers() {
       if (ageMax && age > ageMax) return false;
     }
 
-    // Skill filter — must have a rating of 3 or above (meaningful experience)
+    // Skill filter — rating ≥3 plus, for elderly/infant, STRICT MODE:
+    // experience text must mention real elder/child care work (keyword match).
+    // Cooking and housework stay rating-only (every helper assumed suitable for
+    // general housework, and cooking is judged by self-rated skill).
     const skill = document.getElementById('filterSkill')?.value || '';
     if (skill) {
       const v = parseInt(h[skill]);
       if (isNaN(v) || v < 3) return false;
+      if ((skill === 'skill_elderly' || skill === 'skill_infant') && !hasSkillExperience(h, skill)) return false;
     }
 
     // Experience filter
@@ -718,7 +747,11 @@ Return ONLY the JSON, nothing else.`
           housework:'skill_housework', disabled:'skill_disabled' };
         for (const sk of criteria.skills_required) {
           const col = skillMap[sk];
-          if (col) { const v = parseInt(h[col]); if (isNaN(v) || v < 3) return false; }
+          if (!col) continue;
+          const v = parseInt(h[col]);
+          if (isNaN(v) || v < 3) return false;
+          // Strict mode mirror: elder/infant must also have real text evidence
+          if ((col === 'skill_elderly' || col === 'skill_infant') && !hasSkillExperience(h, col)) return false;
         }
       }
       if (Array.isArray(criteria.experience)) {
