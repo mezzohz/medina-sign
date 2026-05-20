@@ -751,9 +751,10 @@ async function runAiSearch() {
 "${query}"
 
 Fields (use null if not mentioned):
-{"age_min":null,"age_max":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me"],"nationality":null,"religion":null}
+{"age_min":null,"age_max":null,"birth_years":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me"],"nationality":null,"religion":null}
 
-- age_min/age_max: number or null
+- age_min/age_max: number or null — use ONLY for a continuous age range
+- birth_years: array of 4-digit years (e.g. [1994,1996,1999]) when the request lists specific years of birth. Use this — NOT age_min/age_max — whenever specific years are given. Otherwise null.
 - build: "slim" if they want slim/fit/small/thin/petite, "any" otherwise
 - skills_required: only include skills they explicitly need
 - experience: only include if they want specific country experience
@@ -774,6 +775,13 @@ Return ONLY the JSON, nothing else.`
       const age = calcAge(h.dob);
       if (criteria.age_min && age && age < criteria.age_min) return false;
       if (criteria.age_max && age && age > criteria.age_max) return false;
+      // Specific birth-year list — read the year straight off the DOB string
+      // (exact, no timezone math). Handles non-contiguous lists that a
+      // min/max age range cannot express.
+      if (Array.isArray(criteria.birth_years) && criteria.birth_years.length) {
+        const by = parseInt((h.dob || '').slice(0, 4));
+        if (!by || !criteria.birth_years.map(Number).includes(by)) return false;
+      }
       if (criteria.build === 'slim') {
         const { build } = helperBmi(h);
         if (build === 'heavy' || build === 'very heavy') return false;
@@ -821,7 +829,7 @@ Return ONLY the JSON, nothing else.`
       const age = calcAge(h.dob);
       const { bmi, build } = helperBmi(h);
       return {
-        n, name: h.full_name || '—', age, bmi, build,
+        n, name: h.full_name || '—', age, birth_year: parseInt((h.dob || '').slice(0, 4)) || null, bmi, build,
         skills: { elderly: h.skill_elderly, infant: h.skill_infant, cooking: h.skill_cooking,
           housework: h.skill_housework, disabled: h.skill_disabled },
         exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
