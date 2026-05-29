@@ -215,7 +215,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.18-strict-d</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.29-edu</div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -782,7 +782,7 @@ async function runAiSearch() {
 "${query}"
 
 Fields (use null if not mentioned):
-{"age_min":null,"age_max":null,"birth_years":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me"],"nationality":null,"religion":null}
+{"age_min":null,"age_max":null,"birth_years":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me"],"nationality":null,"religion":null,"education":null}
 
 - age_min/age_max: number or null — use ONLY for a continuous age range
 - birth_years: array of 4-digit years (e.g. [1994,1996,1999]) when the request lists specific years of birth. Use this — NOT age_min/age_max — whenever specific years are given. Otherwise null.
@@ -790,6 +790,7 @@ Fields (use null if not mentioned):
 - skills_required: only include skills they explicitly need
 - experience: only include if they want specific country experience
 - nationality/religion: only if specified
+- education: "senior" for SMA/senior high/vocational high, "junior" for SMP/junior high/secondary, "elementary" for SD/elementary/primary. Null otherwise.
 
 Return ONLY the JSON, nothing else.`
         }] }]
@@ -834,6 +835,14 @@ Return ONLY the JSON, nothing else.`
       }
       if (criteria.nationality && (h.nationality||'').toLowerCase() !== criteria.nationality.toLowerCase()) return false;
       if (criteria.religion && (h.religion||'').toLowerCase() !== criteria.religion.toLowerCase()) return false;
+      if (criteria.education) {
+        const e = (h.education || '').toLowerCase();
+        const lvl = criteria.education;
+        const ok = (lvl === 'senior' && /sma|senior|vocational/.test(e))
+                || (lvl === 'junior' && /smp|junior|secondary/.test(e))
+                || (lvl === 'elementary' && /\bsd\b|elementary|primary/.test(e));
+        if (!ok) return false;
+      }
       return true;
     });
 
@@ -849,6 +858,13 @@ Return ONLY the JSON, nothing else.`
     }
 
     // ── STEP 3: AI ranking of pre-filtered candidates (Haiku — fast) ──
+    // Cap to keep the ranker's JSON response under max_tokens. A broad query
+    // (e.g. one that hard-filters nothing) can otherwise overflow and truncate
+    // mid-array, which makes the JSON regex fail with "No ranking returned".
+    const RANK_CAP = 120;
+    const totalCandidates = candidates.length;
+    const wasCapped = totalCandidates > RANK_CAP;
+    if (wasCapped) candidates = candidates.slice(0, RANK_CAP);
     // Use short numeric IDs so the AI can't corrupt UUIDs
     const idMap = {};
     const profiles = candidates.map((h, idx) => {
@@ -869,7 +885,7 @@ Return ONLY the JSON, nothing else.`
 
     const rankResult = await callClaude({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8000,
+        max_tokens: 16000,
         messages: [{ role: 'user', content: [{ type: 'text', text:
           `Rank these pre-filtered helper candidates for this employer request:
 "${query}"
@@ -885,14 +901,20 @@ Return ONLY the JSON array. Include every candidate.`
     }, token, status);
     const rankText = rankResult.content?.find(c => c.type === 'text')?.text || '';
     const rankMatch = rankText.match(/\[[\s\S]*\]/);
-    if (!rankMatch) throw new Error('No ranking returned');
-    const matches = JSON.parse(rankMatch[0]);
+    if (!rankMatch) throw new Error('No ranking returned — try a more specific query');
+    let matches;
+    try {
+      matches = JSON.parse(rankMatch[0]);
+    } catch {
+      throw new Error('Ranker response was truncated — try a more specific query');
+    }
     aiResults = {};
     matches.forEach((m, i) => {
       const realId = idMap[m.n];
       if (realId) aiResults[realId] = { rank: i + 1, score: m.score, reason: m.reason };
     });
-    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found (from ' + allHelpers.length + ' profiles)';
+    const capNote = wasCapped ? ' (top ' + RANK_CAP + ' of ' + totalCandidates + ' — narrow your query for full coverage)' : '';
+    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found (from ' + allHelpers.length + ' profiles)' + capNote;
     renderHelpers();
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
