@@ -809,7 +809,10 @@ Fields (use null if not mentioned):
 - experience: AND logic — helper must have worked in EVERY code listed. Use only for a genuine must-have-all (e.g. "worked in both Singapore and Taiwan" -> ["sg","tw"]). NEVER use it for "X or Y".
 - experience_any: OR logic — helper must have worked in AT LEAST ONE of these. Use for "experience in X or Y" (e.g. "worked in Indonesia or Malaysia" -> ["home","my"]). Null if not applicable.
 - experience_exclude: helper must NOT have worked in any of these. e.g. "no Singapore or Middle East" -> ["sg","me"]. Exclude always wins over include.
-- WORKED EXAMPLE: "only those who worked in Indonesia or Malaysia, exclude anyone who worked anywhere else" -> experience_any:["home","my"], experience_exclude:["sg","hk","tw","me"], experience:null.
+- The word "ONLY" after a country list is critical: it means the helper worked in THOSE countries and NOWHERE else. You MUST then set experience_exclude to ALL of the other country codes not listed. The full code set is [sg, my, hk, tw, me, home].
+- WORKED EXAMPLE 1: "working experience in Indonesia or Malaysia only" -> experience_any:["home","my"], experience_exclude:["sg","hk","tw","me"], experience:null. (home & my are the wanted ones; the OTHER FOUR codes go in experience_exclude.)
+- WORKED EXAMPLE 2: "must have Singapore experience" -> experience:["sg"], experience_any:null, experience_exclude:null.
+- WORKED EXAMPLE 3: "no Middle East experience" -> experience_exclude:["me"], everything else null.
 - nationality/religion: only if specified
 - education: "senior" for SMA/senior high/vocational high, "junior" for SMP/junior high/secondary, "elementary" for SD/elementary/primary. Null otherwise.
 - region_include: array of regions the employer WANTS. region_exclude: array of regions they do NOT want (e.g. "not from Jawa Barat" -> region_exclude:["West Java"]). Use null for both if no region mentioned. Map every Indonesian region name to one of these EXACT canonical values: "West Java" (Jawa Barat / Jabar / Sunda / Sundanese / Bandung / Bogor / Bekasi / Cirebon / Karawang / Sukabumi / Tasikmalaya / Subang / Ciamis), "East Java" (Jawa Timur / Jatim / Surabaya / Malang / Blitar / Kediri / Banyuwangi), "Central Java" (Jawa Tengah / Jateng / Semarang / Cilacap / Banyumas / Kebumen / Brebes), "Sumatra" (Lampung / Medan / Padang / Palembang), "Bali/NTB/NTT" (Bali / Lombok / Bima / Dompu / Mataram / NTB / NTT), "Sulawesi", "Jakarta" (DKI Jakarta). Output ONLY these canonical values.
@@ -820,6 +823,7 @@ Return ONLY the JSON, nothing else.`
     const parseText = parseResult.content?.find(c => c.type === 'text')?.text || '';
     const criteriaMatch = parseText.match(/\{[\s\S]*\}/);
     const criteria = criteriaMatch ? JSON.parse(criteriaMatch[0]) : {};
+    console.log('[AI search] extracted criteria:', JSON.stringify(criteria));
 
     // ── STEP 2: Pre-filter in JavaScript ──
     let candidates = allHelpers.filter(h => {
@@ -854,11 +858,10 @@ Return ONLY the JSON, nothing else.`
       // hasExp() ignores junk placeholders ("NO"/"none"/"-") so a literal "NO"
       // in exp_sg isn't mistaken for real Singapore experience.
       const expMap = { sg:'exp_sg', my:'exp_my', hk:'exp_hk', tw:'exp_tw', me:'exp_me', home:'exp_home' };
-      const hasExp = (code) => {
-        const col = expMap[code]; if (!col) return false;
-        const v = (h[col] || '').toString().trim().toLowerCase();
-        return v !== '' && v !== 'no' && v !== 'none' && v !== '-' && v !== 'n/a' && v !== 'nil';
-      };
+      // Use the SAME detector the card badges use (hasRealExp) so the filter and
+      // the "Ex Singapore"/"Ex Middle East" tags agree perfectly — a helper the
+      // filter keeps can never still show an excluded-country badge.
+      const hasExp = (code) => { const col = expMap[code]; return col ? hasRealExp(h[col]) : false; };
       // Exclude wins: drop anyone who worked in an unwanted country.
       if (Array.isArray(criteria.experience_exclude)) {
         for (const ex of criteria.experience_exclude) if (hasExp(ex)) return false;
