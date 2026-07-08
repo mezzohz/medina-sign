@@ -124,6 +124,9 @@
   .ai-match-high { background:#ecfdf5; color:#059669; }
   .ai-match-med { background:#fffbeb; color:#d97706; }
   .ai-match-low { background:#f0f9ff; color:#0369a1; }
+  .ai-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .ai-chip { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; line-height:1.4; }
+  .ai-chip-free { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
   .ai-login-box { background:#fff; border:1.5px solid var(--border); border-radius:12px; padding:16px; margin-top:12px; max-width:360px; }
   .ai-login-box input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; margin-bottom:8px; }
   .ai-login-box input:focus { outline:none; border-color:var(--teal); }
@@ -178,6 +181,7 @@
         <button onclick="clearAiResults()" style="padding:10px 16px;background:#fff;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)">Clear</button>
         <span id="aiStatus" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
       </div>
+      <div id="aiChips" class="ai-chips"></div>
       <div id="aiLoginBox" style="display:none" class="ai-login-box">
         <div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px">Sign in to use AI Search</div>
         <input type="email" id="aiEmail" placeholder="Email">
@@ -215,7 +219,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.05.29-edu</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.08-evidence</div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -704,6 +708,7 @@ function toggleAiPanel() {
 function clearAiResults() {
   document.getElementById('aiInput').value = '';
   document.getElementById('aiStatus').textContent = '';
+  document.getElementById('aiChips').innerHTML = '';
   aiResults = null;
   renderHelpers();
 }
@@ -777,6 +782,47 @@ async function callClaude(bodyObj, token, statusEl) {
   throw new Error(lastErr || 'AI request failed');
 }
 
+// Minimal HTML escape for chip labels (AI-sourced text may contain <, &, ").
+function escChip(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Translate the parsed criteria into plain-language chips. Structured criteria
+// become normal chips; free_requirements become distinct "verifying" chips so
+// the user sees exactly what was applied as a hard filter vs judged from the
+// work history. Returns [] when nothing at all was understood.
+function buildCriteriaChips(c) {
+  const chips = [];
+  const push = (label, free) => chips.push({ label, free: !!free });
+  if (c.age_min && c.age_max) push(`age ${c.age_min}–${c.age_max}`);
+  else if (c.age_min) push(`age ≥ ${c.age_min}`);
+  else if (c.age_max) push(`age ≤ ${c.age_max}`);
+  if (Array.isArray(c.birth_years) && c.birth_years.length) push(`born ${c.birth_years.join(', ')}`);
+  if (c.build === 'slim') push('slim build');
+  const skillLabel = { elderly: 'elderly care', infant: 'child care', cooking: 'cooking', housework: 'housework', disabled: 'disabled care' };
+  if (Array.isArray(c.skills_required)) c.skills_required.forEach(s => push(`${skillLabel[s] || s} skill ≥3`));
+  const cc = { sg: 'Singapore', my: 'Malaysia', hk: 'Hong Kong', tw: 'Taiwan', me: 'Middle East', home: 'home country' };
+  const cn = code => cc[code] || code;
+  if (Array.isArray(c.experience) && c.experience.length) push(`worked in: ${c.experience.map(cn).join(' + ')}`);
+  if (Array.isArray(c.experience_any) && c.experience_any.length) push(`worked in any: ${c.experience_any.map(cn).join(' / ')}`);
+  if (Array.isArray(c.experience_exclude) && c.experience_exclude.length) push(`exclude: ${c.experience_exclude.map(cn).join(', ')}`);
+  if (c.nationality) push(`nationality: ${c.nationality}`);
+  if (c.religion) push(`religion: ${c.religion}`);
+  if (c.education) { const em = { senior: 'senior high', junior: 'junior high', elementary: 'elementary' }; push(`education: ${em[c.education] || c.education}`); }
+  if (Array.isArray(c.region_include) && c.region_include.length) push(`region: ${c.region_include.join(', ')}`);
+  if (Array.isArray(c.region_exclude) && c.region_exclude.length) push(`exclude region: ${c.region_exclude.join(', ')}`);
+  if (Array.isArray(c.free_requirements)) c.free_requirements.forEach(f => push(`🔎 verifying from work history: ${f}`, true));
+  return chips;
+}
+
+function renderAiChips(chips) {
+  const el = document.getElementById('aiChips');
+  if (!el) return;
+  el.innerHTML = (chips || []).map(ch =>
+    `<span class="ai-chip ${ch.free ? 'ai-chip-free' : ''}">${escChip(ch.label)}</span>`).join('');
+}
+
 async function runAiSearch() {
   const query = document.getElementById('aiInput').value.trim();
   if (!query) return;
@@ -799,7 +845,7 @@ async function runAiSearch() {
 "${query}"
 
 Fields (use null if not mentioned):
-{"age_min":null,"age_max":null,"birth_years":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me","home"],"experience_any":null,"experience_exclude":null,"nationality":null,"religion":null,"education":null,"region_include":null,"region_exclude":null}
+{"age_min":null,"age_max":null,"birth_years":null,"build":"slim|any","skills_required":["elderly","infant","cooking","housework","disabled"],"experience":["sg","my","hk","tw","me","home"],"experience_any":null,"experience_exclude":null,"nationality":null,"religion":null,"education":null,"region_include":null,"region_exclude":null,"free_requirements":[]}
 
 - age_min/age_max: number or null — use ONLY for a continuous age range
 - birth_years: array of 4-digit years (e.g. [1994,1996,1999]) when the request lists specific years of birth. Use this — NOT age_min/age_max — whenever specific years are given. Otherwise null.
@@ -816,6 +862,8 @@ Fields (use null if not mentioned):
 - nationality/religion: only if specified
 - education: "senior" for SMA/senior high/vocational high, "junior" for SMP/junior high/secondary, "elementary" for SD/elementary/primary. Null otherwise.
 - region_include: array of regions the employer WANTS. region_exclude: array of regions they do NOT want (e.g. "not from Jawa Barat" -> region_exclude:["West Java"]). Use null for both if no region mentioned. Map every Indonesian region name to one of these EXACT canonical values: "West Java" (Jawa Barat / Jabar / Sunda / Sundanese / Bandung / Bogor / Bekasi / Cirebon / Karawang / Sukabumi / Tasikmalaya / Subang / Ciamis), "East Java" (Jawa Timur / Jatim / Surabaya / Malang / Blitar / Kediri / Banyuwangi), "Central Java" (Jawa Tengah / Jateng / Semarang / Cilacap / Banyumas / Kebumen / Brebes), "Sumatra" (Lampung / Medan / Padang / Palembang), "Bali/NTB/NTT" (Bali / Lombok / Bima / Dompu / Mataram / NTB / NTT), "Sulawesi", "Jakarta" (DKI Jakarta). Output ONLY these canonical values.
+- free_requirements: an array of strings. Capture EVERY requirement in the request that CANNOT be expressed by any structured field above — verbatim or concisely. This is the safety net: NEVER silently drop a requirement — if it does not fit a structured field, it MUST appear here. Examples of things that belong here: a specific age of child cared for ("children aged 2 or younger"), a minimum total years of experience ("at least 5 years experience"), comfort with pets ("comfortable with large dogs"), a named cuisine or task not covered by the skill flags. Use an empty array [] only when the entire request is fully captured by the structured fields.
+- WORKED EXAMPLE 4: "experience handling baby 2 years and below" -> skills_required:["infant"], free_requirements:["cared for children aged 2 or younger"]. (The infant skill is the structured part; the "2 years and below" nuance is not expressible structurally, so it goes to free_requirements — never dropped.)
 
 Return ONLY the JSON, nothing else.`
         }] }]
@@ -824,6 +872,21 @@ Return ONLY the JSON, nothing else.`
     const criteriaMatch = parseText.match(/\{[\s\S]*\}/);
     const criteria = criteriaMatch ? JSON.parse(criteriaMatch[0]) : {};
     console.log('[AI search] extracted criteria:', JSON.stringify(criteria));
+
+    // Honest UX: show exactly what was understood as chips (structured criteria
+    // + free requirements that will be verified from work history).
+    const chips = buildCriteriaChips(criteria);
+    renderAiChips(chips);
+
+    // If we understood NOTHING (all fields null/empty and no free requirements),
+    // stop before ranking rather than dumping every profile as a "match".
+    if (!chips.length) {
+      aiResults = null;
+      renderHelpers();
+      status.textContent = "Couldn't extract any requirements from that — try describing the need differently.";
+      btn.disabled = false; btn.textContent = '🔍 Find Matching Helpers';
+      return;
+    }
 
     // ── STEP 2: Pre-filter in JavaScript ──
     let candidates = allHelpers.filter(h => {
@@ -910,10 +973,13 @@ Return ONLY the JSON, nothing else.`
     }
 
     // ── STEP 3: AI ranking of pre-filtered candidates (Haiku — fast) ──
-    // Cap to keep the ranker's JSON response under max_tokens. A broad query
-    // (e.g. one that hard-filters nothing) can otherwise overflow and truncate
-    // mid-array, which makes the JSON regex fail with "No ranking returned".
-    const RANK_CAP = 120;
+    // Consider EVERY portal profile. The overflow that caused the old "No
+    // ranking returned" bug came from the RESPONSE (all candidates ranked)
+    // exceeding max_tokens — now bounded by asking for only the TOP 30 matches.
+    // With the response bounded, the input no longer needs an arbitrary slice,
+    // so this cap sits at the full portal size (180) rather than starving the
+    // ranker of candidates.
+    const RANK_CAP = 180;
     const totalCandidates = candidates.length;
     const wasCapped = totalCandidates > RANK_CAP;
     if (wasCapped) candidates = candidates.slice(0, RANK_CAP);
@@ -932,29 +998,37 @@ Return ONLY the JSON, nothing else.`
         exp: [h.exp_sg?'SG:'+h.exp_sg:'', h.exp_my?'MY:'+h.exp_my:'', h.exp_hk?'HK:'+h.exp_hk:'',
               h.exp_tw?'TW:'+h.exp_tw:'', h.exp_me?'ME:'+h.exp_me:'', h.exp_home?'Home:'+h.exp_home:''].filter(Boolean).join('; ') || 'Fresh',
         cooking: h.cooking_cuisines || null, languages: h.spoken_languages || null,
-        work: (h.work_desc || '').slice(0, 150)
+        // FULL work history — this is the evidence the ranker verifies free
+        // requirements against (e.g. child ages cared for, years of service).
+        // Truncating this (old 150-char cap) starved the ranker of exactly the
+        // detail nuanced queries need.
+        work: h.work_desc || ''
       };
     });
 
+    const freeReqs = Array.isArray(criteria.free_requirements) ? criteria.free_requirements : [];
     const rankResult = await callClaude({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 16000,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: [{ type: 'text', text:
           `Rank these pre-filtered helper candidates for this employer request:
 "${query}"
 
-CANDIDATES (already filtered by hard criteria):
+CANDIDATES (already filtered by hard criteria — each has a full "work" history):
 ${JSON.stringify(profiles)}
 
-You MUST include ALL candidates in your response. Score each 50-100 based on overall fit.
-Return ONLY a JSON array sorted by score descending. Use the "n" field as the identifier:
-[{"n":1,"score":90,"reason":"Key stats: age X, BMI Y, Z years elderly care experience"}]
-Return ONLY the JSON array. Include every candidate.`
+${freeReqs.length ? `VERIFICATION DUTIES — these requirements could NOT be encoded as hard filters, so YOU must verify each one against the candidate's "work" text (and other fields):
+${freeReqs.map((r, i) => (i + 1) + '. ' + r).join('\n')}
+A candidate may score 60 or higher ONLY if their profile text contains ACTUAL EVIDENCE satisfying these requirement(s). If there is no such evidence, score 40 or below. Every returned match MUST include an "evidence" field: a short, near-verbatim quote from that candidate's "work"/profile text that proves the requirement(s) are met.` : `Score each candidate 50-100 on overall fit. Every returned match MUST include an "evidence" field: the single strongest concrete detail from their profile that supports the fit.`}
+
+Return ONLY the TOP 30 best matches as a JSON array, sorted by score descending. Use the "n" field as the identifier. Each entry:
+[{"n":1,"score":90,"evidence":"<short near-verbatim quote>","reason":"<lead with that evidence quote, then key stats>"}]
+Return ONLY the JSON array — at most 30 entries, nothing else.`
         }] }]
     }, token, status);
     const rankText = rankResult.content?.find(c => c.type === 'text')?.text || '';
     const rankMatch = rankText.match(/\[[\s\S]*\]/);
-    if (!rankMatch) throw new Error('No ranking returned — try a more specific query');
+    if (!rankMatch) throw new Error('No ranking returned — try again, or rephrase the query more specifically');
     let matches;
     try {
       matches = JSON.parse(rankMatch[0]);
@@ -964,10 +1038,14 @@ Return ONLY the JSON array. Include every candidate.`
     aiResults = {};
     matches.forEach((m, i) => {
       const realId = idMap[m.n];
-      if (realId) aiResults[realId] = { rank: i + 1, score: m.score, reason: m.reason };
+      // reason drives the on-card match line; fall back to evidence if the model
+      // only returned the quote.
+      if (realId) aiResults[realId] = { rank: i + 1, score: m.score, reason: m.reason || m.evidence || '' };
     });
-    const capNote = wasCapped ? ' (top ' + RANK_CAP + ' of ' + totalCandidates + ' — narrow your query for full coverage)' : '';
-    status.textContent = matches.length + ' match' + (matches.length !== 1 ? 'es' : '') + ' found (from ' + allHelpers.length + ' profiles)' + capNote;
+    // Honest result line: N = matches actually RETURNED (≤30, evidence-backed),
+    // M = profiles the ranker verified against (the pre-filtered set).
+    const nMatches = matches.length;
+    status.textContent = `${nMatches} strong match${nMatches !== 1 ? 'es' : ''} · verified against ${totalCandidates} profile${totalCandidates !== 1 ? 's' : ''}`;
     renderHelpers();
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
