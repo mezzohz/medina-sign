@@ -61,6 +61,20 @@
   .filters select { min-width:150px; }
   .count-badge { margin-left:auto; background:var(--green-bg); color:var(--green); font-size:12px; font-weight:700; padding:6px 14px; border-radius:20px; white-space:nowrap; }
 
+  /* REGION FILTER CHIPS — multi-select toggles, reuses the .ai-chip teal/emerald aesthetic */
+  .region-chip-row { display:flex; flex-wrap:wrap; gap:6px; width:100%; align-items:center; }
+  .region-chip {
+    display:inline-flex; align-items:center; padding:6px 12px; border-radius:999px;
+    font-size:12px; font-weight:600; background:#ecfdf5; color:#047857; border:1.5px solid #a7f3d0;
+    cursor:pointer; transition:all 0.15s ease; line-height:1.4; user-select:none;
+  }
+  .region-chip:hover { border-color:#059669; }
+  .region-chip.selected {
+    background:linear-gradient(135deg,#0D7377,#0a9396); color:#fff; border-color:#0D7377;
+    box-shadow:0 2px 8px rgba(13,115,119,0.25);
+  }
+  .region-null-note { padding:8px 20px 0; font-size:12px; color:var(--muted); text-align:center; }
+
   /* GRID */
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:18px; padding:24px; }
   .card { background:var(--white); border-radius:16px; overflow:hidden; border:1.5px solid var(--border); transition:all 0.2s; cursor:pointer; }
@@ -219,7 +233,9 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.08-profiles</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.11-region</div>
+    <!-- Region filter chips — populated live from loaded data by renderRegionChips(). -->
+    <div class="region-chip-row" id="regionChipRow"></div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
@@ -235,6 +251,7 @@
   </div>
 
   <div class="grid" id="helperGrid"></div>
+  <div class="region-null-note" id="regionNullNote" style="display:none"></div>
 </div>
 
 <script>
@@ -246,6 +263,7 @@ let allHelpers = [];
 let portalToken = null;
 let manageMode = false;
 let selectedIds = new Set();
+let selectedRegions = new Set();
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token');
@@ -398,6 +416,7 @@ function hasSkillExperience(h, skillCol) {
 }
 
 function renderHelpers() {
+  renderRegionChips();
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const exp = document.getElementById('filterExp')?.value || '';
   const heightMin = parseInt(document.getElementById('filterHeightMin')?.value) || null;
@@ -445,6 +464,30 @@ function renderHelpers() {
 
     return true;
   });
+
+  // Region filter — its own AND stage on top of every filter above (including
+  // the AI-results gate already baked into `filtered`), so it composes exactly
+  // like every other manual filter. Kept as a separate stage (rather than
+  // folded into the block above) so the "hidden by region filter" null-region
+  // count can be derived from the same pre-region-filter set.
+  let regionHiddenNullCount = 0;
+  if (selectedRegions.size) {
+    regionHiddenNullCount = filtered.filter(h => !(h.region || '').trim()).length;
+    filtered = filtered.filter(h => selectedRegions.has((h.region || '').trim()));
+  }
+  const regionNoteEl = document.getElementById('regionNullNote');
+  if (regionNoteEl) {
+    if (regionHiddenNullCount > 0) {
+      regionNoteEl.textContent = regionHiddenNullCount === 1
+        ? '1 profile has no recorded region and is hidden by the region filter.'
+        : `${regionHiddenNullCount} profiles have no recorded region and are hidden by the region filter.`;
+      regionNoteEl.style.display = 'block';
+    } else {
+      regionNoteEl.textContent = '';
+      regionNoteEl.style.display = 'none';
+    }
+  }
+
   if (aiResults) {
     filtered.sort((a, b) => (aiResults[a.id]?.rank || 999) - (aiResults[b.id]?.rank || 999));
   }
@@ -678,19 +721,55 @@ let aiSession = null;
 
 // Normalise any Indonesian region/province name (stored value OR AI criterion)
 // to one canonical key so "Jawa Barat" / "West Java" / "Sunda" all match.
-// Stored portal regions are: West Java, East Java, Central Java, Sumatra,
-// Bali/NTB/NTT, Sulawesi, Jakarta.
+// Stored portal regions (see REGION_ORDER below): West Java, East Java,
+// Central Java, Jakarta, Banten, Yogyakarta, Sumatra, Kalimantan, Sulawesi,
+// Bali/NTB/NTT.
 function canonRegion(raw) {
   const s = (raw || '').toLowerCase().trim();
   if (!s) return '';
   if (/jawa\s*barat|jabar|west\s*java|sunda|bandung|bogor|bekasi|cirebon|karawang|sukabumi|tasik|subang|ciamis|garut|cianjur/.test(s)) return 'west java';
   if (/jawa\s*timur|jatim|east\s*java|surabaya|malang|blitar|kediri|banyuwangi|jember|madiun|pasuruan|mojokerto|tulungagung|sidoarjo/.test(s)) return 'east java';
-  if (/jawa\s*tengah|jateng|central\s*java|semarang|cilacap|banyumas|kebumen|brebes|blora|banjarnegara|kulonprogo/.test(s)) return 'central java';
+  if (/jawa\s*tengah|jateng|central\s*java|semarang|cilacap|banyumas|kebumen|brebes|blora|banjarnegara/.test(s)) return 'central java';
+  if (/banten|serang|tangerang|cilegon|lebak|pandeglang/.test(s)) return 'banten';
+  if (/yogyakarta|jogjakarta|\bjogja\b|\bdiy\b|bantul|sleman|gunung\s*kidul|kulon\s*progo|kulonprogo/.test(s)) return 'yogyakarta';
   if (/sumatra|sumatera|lampung|medan|padang|palembang|jambi|riau|aceh|bengkulu/.test(s)) return 'sumatra';
+  if (/kalimantan|borneo|pontianak|banjarmasin|samarinda|balikpapan|palangka\s*raya/.test(s)) return 'kalimantan';
   if (/\bbali\b|ntb|ntt|lombok|bima|dompu|mataram|nusa\s*tenggara/.test(s)) return 'bali/ntb/ntt';
   if (/sulawesi|makassar|manado/.test(s)) return 'sulawesi';
   if (/jakarta|dki/.test(s)) return 'jakarta';
   return s; // unknown — compare literally
+}
+
+// ── REGION FILTER CHIPS ──────────────────────────────────────────────────
+// Fixed display order (RF-D2); only regions with ≥1 loaded profile render as
+// a chip. Multi-select — OR within the selection, AND with every other filter
+// (applied inside renderHelpers(), see the region stage there).
+const REGION_ORDER = ['East Java', 'Central Java', 'West Java', 'Jakarta', 'Banten', 'Yogyakarta', 'Sumatra', 'Kalimantan', 'Sulawesi', 'Bali/NTB/NTT'];
+
+// Repaints the chip row from the CURRENT allHelpers — counts are always live
+// (recomputed every renderHelpers() call, so they never go stale after a
+// load or an admin delete). Selection state (selectedRegions) persists across
+// repaints, so toggling one chip — or typing in another filter — never resets
+// the others.
+function renderRegionChips() {
+  const row = document.getElementById('regionChipRow');
+  if (!row) return;
+  const counts = {};
+  allHelpers.forEach(h => {
+    const r = (h.region || '').trim();
+    if (r) counts[r] = (counts[r] || 0) + 1;
+  });
+  const present = REGION_ORDER.filter(r => counts[r] > 0);
+  row.innerHTML = present.map(r => {
+    const sel = selectedRegions.has(r);
+    return `<span class="region-chip${sel ? ' selected' : ''}" onclick="toggleRegionChip('${r.replace(/'/g, "\\'")}')">${escChip(r)} · ${counts[r]}</span>`;
+  }).join('');
+}
+
+function toggleRegionChip(region) {
+  if (selectedRegions.has(region)) selectedRegions.delete(region);
+  else selectedRegions.add(region);
+  renderHelpers();
 }
 
 function toggleAiPanel() {
@@ -865,7 +944,7 @@ Fields (use null if not mentioned):
 - WORKED EXAMPLE 3: "no Middle East experience" -> experience_exclude:["me"], everything else null.
 - nationality/religion: only if specified
 - education: "senior" for SMA/senior high/vocational high, "junior" for SMP/junior high/secondary, "elementary" for SD/elementary/primary. Null otherwise.
-- region_include: array of regions the employer WANTS. region_exclude: array of regions they do NOT want (e.g. "not from Jawa Barat" -> region_exclude:["West Java"]). Use null for both if no region mentioned. Map every Indonesian region name to one of these EXACT canonical values: "West Java" (Jawa Barat / Jabar / Sunda / Sundanese / Bandung / Bogor / Bekasi / Cirebon / Karawang / Sukabumi / Tasikmalaya / Subang / Ciamis), "East Java" (Jawa Timur / Jatim / Surabaya / Malang / Blitar / Kediri / Banyuwangi), "Central Java" (Jawa Tengah / Jateng / Semarang / Cilacap / Banyumas / Kebumen / Brebes), "Sumatra" (Lampung / Medan / Padang / Palembang), "Bali/NTB/NTT" (Bali / Lombok / Bima / Dompu / Mataram / NTB / NTT), "Sulawesi", "Jakarta" (DKI Jakarta). Output ONLY these canonical values.
+- region_include: array of regions the employer WANTS. region_exclude: array of regions they do NOT want (e.g. "not from Jawa Barat" -> region_exclude:["West Java"]). Use null for both if no region mentioned. Map every Indonesian region name to one of these EXACT canonical values: "West Java" (Jawa Barat / Jabar / Sunda / Sundanese / Bandung / Bogor / Bekasi / Cirebon / Karawang / Sukabumi / Tasikmalaya / Subang / Ciamis), "East Java" (Jawa Timur / Jatim / Surabaya / Malang / Blitar / Kediri / Banyuwangi), "Central Java" (Jawa Tengah / Jateng / Semarang / Cilacap / Banyumas / Kebumen / Brebes), "Banten" (Serang / Tangerang / Cilegon / Lebak / Pandeglang), "Yogyakarta" (Jogja / Jogjakarta / DIY / Bantul / Sleman / Gunungkidul / Kulon Progo), "Sumatra" (Lampung / Medan / Padang / Palembang), "Kalimantan" (Borneo / Pontianak / Banjarmasin / Samarinda / Balikpapan / Palangkaraya), "Bali/NTB/NTT" (Bali / Lombok / Bima / Dompu / Mataram / NTB / NTT), "Sulawesi", "Jakarta" (DKI Jakarta). Output ONLY these canonical values.
 - childcare_max_age: a NUMBER (years) or null. Set it ONLY when the request specifies an age ceiling for the children to be cared for — the oldest a cared-for child may be. Examples: "baby 2 years and below" -> 2, "toddler under 3" -> 3, "infant/newborn" -> 0.5, "children below 12 months" -> 1. Null when no child-age ceiling is stated.
 - min_total_years: a NUMBER or null — a minimum TOTAL years of experience. "at least 5 years experience" -> 5, "minimum 3 years" -> 3, "experienced (10+ years)" -> 10. Null when no minimum-years floor is stated.
 - free_requirements: an array of strings. Capture EVERY requirement in the request that CANNOT be expressed by any structured field above — verbatim or concisely. This is the safety net: NEVER silently drop a requirement — if it does not fit a structured field, it MUST appear here. Examples of things that belong here: a specific age of child cared for ("children aged 2 or younger"), a minimum total years of experience ("at least 5 years experience"), comfort with pets ("comfortable with large dogs"), a named cuisine or task not covered by the skill flags. Use an empty array [] only when the entire request is fully captured by the structured fields.
