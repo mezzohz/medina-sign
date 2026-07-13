@@ -145,6 +145,12 @@
   .ai-login-box input { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:'Outfit',sans-serif; font-size:13px; margin-bottom:8px; }
   .ai-login-box input:focus { outline:none; border-color:var(--teal); }
 
+  /* ACCESS BANNER — client (token) mode only, shows employer + expiry from the portal_access RPC */
+  .access-banner { padding:10px 20px; background:#f0fdfa; border-bottom:1px solid #a7f3d0; font-size:12.5px; color:#065f46; text-align:center; font-weight:600; }
+
+  /* ADMIN SIGN-IN — reuses the staff email/password sign-in pattern, shown pre-portal when ?admin=1 has no session (CA-D4) */
+  .admin-signin-note { background:#fef3c7; color:#92400e; font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; display:inline-block; margin-bottom:16px; text-transform:uppercase; letter-spacing:0.5px; }
+
   /* MANAGE MODE */
   .card.selectable { cursor:pointer; position:relative; }
   .card.selectable:hover { border-color:#f97316; }
@@ -166,7 +172,7 @@
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen" class="login-wrap">
-  <div class="login-card">
+  <div class="login-card" id="loginCard">
     <img src="logo-login.png" alt="Medina Recruitment Consultant" style="width:100%;max-width:320px;margin-bottom:8px">
     <div class="sub">Helper Profiles — Enter your access password</div>
     <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')validateAccess()">
@@ -184,30 +190,18 @@
       <div class="sub">Available Helpers — Browse and enquire</div>
     </div>
   </div>
-  <!-- AI Search Panel (admin only, injected by JS) -->
-  <div class="ai-panel" id="aiPanel">
-    <div class="ai-inner">
-      <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:var(--dark)">🤖 AI Helper Search</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Describe your client's requirements — care needs, age, body type, cooking, experience, availability, etc.</div>
-      <textarea class="ai-textarea" id="aiInput" placeholder="e.g. Elderly care - nearly 90yo in wheelchair, needs someone who can cook, prefer slim build, age 35-45, expected arrival mid July"></textarea>
-      <div class="ai-actions">
-        <button class="ai-btn" id="aiBtn" onclick="runAiSearch()">🔍 Find Matching Helpers</button>
-        <button onclick="clearAiResults()" style="padding:10px 16px;background:#fff;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)">Clear</button>
-        <span id="aiStatus" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
-      </div>
-      <div id="aiChips" class="ai-chips"></div>
-      <div id="aiLoginBox" style="display:none" class="ai-login-box">
-        <div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px">Sign in to use AI Search</div>
-        <input type="email" id="aiEmail" placeholder="Email">
-        <input type="password" id="aiPassword" placeholder="Password" onkeydown="if(event.key==='Enter')aiLogin()">
-        <button class="ai-btn" onclick="aiLogin()" style="width:100%;justify-content:center">Sign In</button>
-        <div id="aiLoginErr" style="font-size:12px;color:#dc2626;margin-top:6px;display:none"></div>
-      </div>
-    </div>
-  </div>
+  <!-- Client-mode access banner (employer + valid-until, from portal_access) — CA-D6 -->
+  <div class="access-banner" id="accessBanner" style="display:none"></div>
+  <!-- AI Search Panel — EMPTY by default. Only ever populated by initAiSearch(),
+       which runs ONLY when sb.auth.getSession() finds a real staff session
+       (CA-D6). In client/token mode with no staff session, this stays an empty
+       container: no AI markup ships to the DOM, nothing to inspect/enable via
+       devtools, no init code runs. -->
+  <div class="ai-panel" id="aiPanel"></div>
 
   <div class="filters">
-    <button onclick="toggleAiPanel()" id="aiToggleBtn" style="display:none;padding:8px 16px;background:linear-gradient(135deg,#0D7377,#0a9396);border:none;color:#fff;border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🤖 AI Search</button>
+    <!-- AI toggle button — injected by initAiSearch() only (staff session present). Empty slot otherwise. -->
+    <span id="aiToggleSlot"></span>
     <input type="text" id="searchInput" placeholder="🔍  Search by name, nationality..." oninput="renderHelpers()">
     <input type="number" id="filterHeightMin" placeholder="Min height (cm)" min="140" max="180" oninput="renderHelpers()" style="width:130px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--dark)">
     <div style="display:flex;align-items:center;gap:6px">
@@ -233,13 +227,13 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.11-region</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.11-access</div>
     <!-- Region filter chips — populated live from loaded data by renderRegionChips(). -->
     <div class="region-chip-row" id="regionChipRow"></div>
   </div>
 
   <!-- ADMIN BULK BAR (admin only) -->
-  <div id="adminBar" style="display:none;padding:10px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <div id="adminBar" style="display:none;padding:10px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;align-items:center;gap:10px;flex-wrap:wrap">
     <button onclick="toggleManageMode()" id="manageBtn" style="padding:8px 16px;border-radius:8px;border:1.5px solid #c2410c;background:#fff;color:#c2410c;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">☑ Manage Profiles</button>
     <div id="bulkActions" style="display:none;align-items:center;gap:10px">
       <button onclick="selectAllHelpers()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--dark);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Select All</button>
@@ -260,10 +254,12 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let allHelpers = [];
-let portalToken = null;
 let manageMode = false;
 let selectedIds = new Set();
 let selectedRegions = new Set();
+let aiResults = null;       // shared with renderHelpers()'s AI-match filter/sort; populated only if initAiSearch() runs
+let accessToken = null;     // client-mode credentials — JS MEMORY ONLY (CA-D6), never localStorage
+let accessPassword = null;  // closing the tab re-asks; 3-day links make this fine
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token');
@@ -275,32 +271,92 @@ function toTitle(str) {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
-if (!token) {
+// Minimal HTML escape — shared by region chips (always active) and AI chips
+// (only ever rendered from inside initAiSearch()).
+function escChip(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Runs once the portal is unlocked, in EITHER client or admin mode. AI
+// features render ONLY when a real staff Supabase session exists (CA-D6,
+// Hilmi's explicit instruction) — checked fresh every time so a staff member
+// signed in from a previous admin visit still gets AI on a plain client link
+// they're testing. No session -> initAiSearch() never runs -> the AI block
+// stays byte-absent from the DOM (see the empty #aiPanel container above).
+async function applyStaffModeUI() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) initAiSearch();
+}
+
+function showAccessBanner(employerName, expiresAt) {
+  const el = document.getElementById('accessBanner');
+  if (!el) return;
+  const fmt = d => d ? new Date(d).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  el.textContent = `Access for ${employerName ? toTitle(employerName) : 'Guest'} · valid until ${fmt(expiresAt)}`;
+  el.style.display = 'block';
+}
+
+// ── ADMIN MODE (?admin=1) — session-gated, CA-D4 ────────────────────────────
+// No token/password/__admin__ sentinel involved at all any more (those rows
+// are revoked and could never validate through portal_access anyway — a
+// 64-char sha256 hex digest can never equal the 9-char literal '__admin__').
+// A signed-in staff session unlocks admin mode directly; without one, the
+// login card is swapped for a staff email/password sign-in (the same
+// Supabase Auth flow the old aiLoginBox used) and retried on success.
+async function tryAdminUnlock() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await loadHelpersAdmin();
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('portal').style.display = 'block';
+    await applyStaffModeUI();
+    return true;
+  }
+  renderAdminSignIn();
+  return false;
+}
+
+function renderAdminSignIn() {
+  const card = document.getElementById('loginCard');
+  card.innerHTML = `
+    <img src="logo-login.png" alt="Medina Recruitment Consultant" style="width:100%;max-width:320px;margin-bottom:8px">
+    <div class="admin-signin-note">Staff Sign In Required</div>
+    <div class="sub">Admin mode needs a Medina staff account</div>
+    <input type="email" id="adminEmail" placeholder="Staff email" autocomplete="email">
+    <input type="password" id="adminPassword" placeholder="Password" onkeydown="if(event.key==='Enter')adminStaffSignIn()">
+    <button id="adminSignInBtn" onclick="adminStaffSignIn()">Sign In</button>
+    <div class="err" id="loginErr"></div>`;
+}
+
+async function adminStaffSignIn() {
+  const email = document.getElementById('adminEmail').value.trim();
+  const pw = document.getElementById('adminPassword').value;
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('adminSignInBtn');
+  if (!email || !pw) { err.textContent = 'Enter email and password.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  err.style.display = 'none';
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if (error) throw error;
+    await tryAdminUnlock();
+  } catch (e) {
+    err.textContent = e.message || 'Sign in failed'; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+}
+
+if (isAdmin) {
+  tryAdminUnlock();
+} else if (!token) {
   document.getElementById('loginErr').textContent = 'Invalid link — no access token provided.';
   document.getElementById('loginErr').style.display = 'block';
   document.getElementById('pwInput').style.display = 'none';
   document.getElementById('loginBtn').style.display = 'none';
-} else if (isAdmin) {
-  (async () => {
-    try {
-      const { data, error } = await sb.from('helper_portal_tokens').select('*').eq('token', token).gte('expires_at', new Date().toISOString()).limit(1);
-      if (error) throw error;
-      if (data?.length && data[0].password_hash === '__admin__') {
-        portalToken = data[0];
-        await loadHelpers();
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('portal').style.display = 'block';
-      } else {
-        document.getElementById('loginErr').textContent = 'Admin token invalid or expired.';
-        document.getElementById('loginErr').style.display = 'block';
-      }
-    } catch (e) {
-      document.getElementById('loginErr').textContent = 'Error: ' + e.message;
-      document.getElementById('loginErr').style.display = 'block';
-    }
-  })();
 }
 
+// ── CLIENT MODE (?token=...) — server-enforced via the portal_access RPC ───
 async function validateAccess() {
   const pw = document.getElementById('pwInput').value.trim();
   const err = document.getElementById('loginErr');
@@ -310,36 +366,49 @@ async function validateAccess() {
   err.style.display = 'none';
 
   try {
-    const { data, error } = await sb.from('helper_portal_tokens')
-      .select('*').eq('token', token).gte('expires_at', new Date().toISOString()).limit(1);
+    const { data, error } = await sb.rpc('portal_access', { p_token: token, p_password: pw });
     if (error) throw error;
-    if (!data?.length) {
-      err.textContent = 'Link expired or invalid.'; err.style.display = 'block';
+    if (!data?.ok) {
+      err.textContent = data?.reason === 'expired'
+        ? 'This link has expired. Please ask Medina Recruitment for a fresh link.'
+        : 'Incorrect password or invalid link.';
+      err.style.display = 'block';
       btn.disabled = false; btn.textContent = 'View Helpers'; return;
     }
-    if (data[0].password_hash !== pw) {
-      err.textContent = 'Incorrect password.'; err.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'View Helpers'; return;
-    }
-    portalToken = data[0];
-    await loadHelpers();
+    accessToken = token;
+    accessPassword = pw;
+    await loadHelpersViaRpc();
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('portal').style.display = 'block';
+    showAccessBanner(data.employer_name, data.expires_at);
+    await applyStaffModeUI();
   } catch (e) {
     err.textContent = 'Error: ' + e.message; err.style.display = 'block';
     btn.disabled = false; btn.textContent = 'View Helpers';
   }
 }
 
-async function loadHelpers() {
+// Client-mode data load — via the SECURITY DEFINER RPC. No server-side
+// session state; token+password are re-sent on this one call (CA-D1). Only
+// the PII-minimized column whitelist comes back (Phase 0 rendered-fields
+// audit — passport/contact/salary/supplier/etc. never leave the database).
+async function loadHelpersViaRpc() {
+  const { data, error } = await sb.rpc('portal_list_helpers', { p_token: accessToken, p_password: accessPassword });
+  if (error) { console.error(error); allHelpers = []; renderHelpers(); return; }
+  allHelpers = data || [];
+  renderHelpers();
+}
+
+// Admin-mode data load — direct table read as the signed-in staff's
+// `authenticated` role (full columns; authenticated keeps its existing access
+// throughout this build — only anon reads are revoked, CA-D2). Behavior
+// unchanged from the pre-rewrite loadHelpers().
+async function loadHelpersAdmin() {
   const { data, error } = await sb.from('portal_helpers')
     .select('*').eq('status', 'active').order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   allHelpers = data || [];
-  if (isAdmin) {
-    document.getElementById('adminBar').style.display = 'flex';
-    document.getElementById('aiToggleBtn').style.display = '';
-  }
+  document.getElementById('adminBar').style.display = 'flex';
   renderHelpers();
 }
 
@@ -714,32 +783,6 @@ async function deleteSelected() {
   toggleManageMode();
 }
 
-// ── AI SEARCH ──────────────────────────────────────────────────────────────
-const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
-let aiResults = null;
-let aiSession = null;
-
-// Normalise any Indonesian region/province name (stored value OR AI criterion)
-// to one canonical key so "Jawa Barat" / "West Java" / "Sunda" all match.
-// Stored portal regions (see REGION_ORDER below): West Java, East Java,
-// Central Java, Jakarta, Banten, Yogyakarta, Sumatra, Kalimantan, Sulawesi,
-// Bali/NTB/NTT.
-function canonRegion(raw) {
-  const s = (raw || '').toLowerCase().trim();
-  if (!s) return '';
-  if (/jawa\s*barat|jabar|west\s*java|sunda|bandung|bogor|bekasi|cirebon|karawang|sukabumi|tasik|subang|ciamis|garut|cianjur/.test(s)) return 'west java';
-  if (/jawa\s*timur|jatim|east\s*java|surabaya|malang|blitar|kediri|banyuwangi|jember|madiun|pasuruan|mojokerto|tulungagung|sidoarjo/.test(s)) return 'east java';
-  if (/jawa\s*tengah|jateng|central\s*java|semarang|cilacap|banyumas|kebumen|brebes|blora|banjarnegara/.test(s)) return 'central java';
-  if (/banten|serang|tangerang|cilegon|lebak|pandeglang/.test(s)) return 'banten';
-  if (/yogyakarta|jogjakarta|\bjogja\b|\bdiy\b|bantul|sleman|gunung\s*kidul|kulon\s*progo|kulonprogo/.test(s)) return 'yogyakarta';
-  if (/sumatra|sumatera|lampung|medan|padang|palembang|jambi|riau|aceh|bengkulu/.test(s)) return 'sumatra';
-  if (/kalimantan|borneo|pontianak|banjarmasin|samarinda|balikpapan|palangka\s*raya/.test(s)) return 'kalimantan';
-  if (/\bbali\b|ntb|ntt|lombok|bima|dompu|mataram|nusa\s*tenggara/.test(s)) return 'bali/ntb/ntt';
-  if (/sulawesi|makassar|manado/.test(s)) return 'sulawesi';
-  if (/jakarta|dki/.test(s)) return 'jakarta';
-  return s; // unknown — compare literally
-}
-
 // ── REGION FILTER CHIPS ──────────────────────────────────────────────────
 // Fixed display order (RF-D2); only regions with ≥1 loaded profile render as
 // a chip. Multi-select — OR within the selection, AND with every other filter
@@ -772,141 +815,199 @@ function toggleRegionChip(region) {
   renderHelpers();
 }
 
-function toggleAiPanel() {
-  const panel = document.getElementById('aiPanel');
-  const btn = document.getElementById('aiToggleBtn');
-  panel.classList.toggle('open');
-  if (panel.classList.contains('open')) {
-    btn.style.background = '#059669';
-    document.getElementById('aiInput').focus();
-  } else {
-    btn.style.background = 'linear-gradient(135deg,#0D7377,#0a9396)';
+// ── AI SEARCH (staff-session-gated, CA-D6 — Hilmi's explicit instruction) ──
+// Everything in this factory is defined ONLY when it runs, and it runs ONLY
+// from applyStaffModeUI() after sb.auth.getSession() has already confirmed a
+// real staff session. In client (token) mode with no staff session,
+// initAiSearch() never executes: none of these functions ever reach `window`,
+// #aiPanel/#aiToggleSlot stay empty containers, and there is nothing for a
+// client to enable via devtools — this is the "init code short-circuited"
+// half of CA-D6 (the empty-container markup above is the "hidden" half).
+// Manual filters (region chips, age/height/experience, text search) are
+// UNCHANGED top-level code and work for every visitor regardless of AI state.
+let aiInitialized = false;
+function initAiSearch() {
+  if (aiInitialized) return;
+  aiInitialized = true;
+
+  const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
+  let aiSession = null;
+
+  // Inject the AI panel markup — this is the ONLY place in the whole app this
+  // HTML is constructed. Byte-identical to the pre-rewrite static markup.
+  document.getElementById('aiPanel').innerHTML = `
+    <div class="ai-inner">
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:var(--dark)">🤖 AI Helper Search</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Describe your client's requirements — care needs, age, body type, cooking, experience, availability, etc.</div>
+      <textarea class="ai-textarea" id="aiInput" placeholder="e.g. Elderly care - nearly 90yo in wheelchair, needs someone who can cook, prefer slim build, age 35-45, expected arrival mid July"></textarea>
+      <div class="ai-actions">
+        <button class="ai-btn" id="aiBtn" onclick="runAiSearch()">🔍 Find Matching Helpers</button>
+        <button onclick="clearAiResults()" style="padding:10px 16px;background:#fff;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)">Clear</button>
+        <span id="aiStatus" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+      </div>
+      <div id="aiChips" class="ai-chips"></div>
+      <div id="aiLoginBox" style="display:none" class="ai-login-box">
+        <div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px">Sign in to use AI Search</div>
+        <input type="email" id="aiEmail" placeholder="Email">
+        <input type="password" id="aiPassword" placeholder="Password" onkeydown="if(event.key==='Enter')aiLogin()">
+        <button class="ai-btn" onclick="aiLogin()" style="width:100%;justify-content:center">Sign In</button>
+        <div id="aiLoginErr" style="font-size:12px;color:#dc2626;margin-top:6px;display:none"></div>
+      </div>
+    </div>`;
+  document.getElementById('aiToggleSlot').innerHTML =
+    `<button onclick="toggleAiPanel()" id="aiToggleBtn" style="padding:8px 16px;background:linear-gradient(135deg,#0D7377,#0a9396);border:none;color:#fff;border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🤖 AI Search</button>`;
+
+  // Normalise any Indonesian region/province name (stored value OR AI criterion)
+  // to one canonical key so "Jawa Barat" / "West Java" / "Sunda" all match.
+  // Stored portal regions (see REGION_ORDER above): West Java, East Java,
+  // Central Java, Jakarta, Banten, Yogyakarta, Sumatra, Kalimantan, Sulawesi,
+  // Bali/NTB/NTT. AI-only — the manual region chip filter above compares the
+  // stored value directly and never needed normalisation.
+  function canonRegion(raw) {
+    const s = (raw || '').toLowerCase().trim();
+    if (!s) return '';
+    if (/jawa\s*barat|jabar|west\s*java|sunda|bandung|bogor|bekasi|cirebon|karawang|sukabumi|tasik|subang|ciamis|garut|cianjur/.test(s)) return 'west java';
+    if (/jawa\s*timur|jatim|east\s*java|surabaya|malang|blitar|kediri|banyuwangi|jember|madiun|pasuruan|mojokerto|tulungagung|sidoarjo/.test(s)) return 'east java';
+    if (/jawa\s*tengah|jateng|central\s*java|semarang|cilacap|banyumas|kebumen|brebes|blora|banjarnegara/.test(s)) return 'central java';
+    if (/banten|serang|tangerang|cilegon|lebak|pandeglang/.test(s)) return 'banten';
+    if (/yogyakarta|jogjakarta|\bjogja\b|\bdiy\b|bantul|sleman|gunung\s*kidul|kulon\s*progo|kulonprogo/.test(s)) return 'yogyakarta';
+    if (/sumatra|sumatera|lampung|medan|padang|palembang|jambi|riau|aceh|bengkulu/.test(s)) return 'sumatra';
+    if (/kalimantan|borneo|pontianak|banjarmasin|samarinda|balikpapan|palangka\s*raya/.test(s)) return 'kalimantan';
+    if (/\bbali\b|ntb|ntt|lombok|bima|dompu|mataram|nusa\s*tenggara/.test(s)) return 'bali/ntb/ntt';
+    if (/sulawesi|makassar|manado/.test(s)) return 'sulawesi';
+    if (/jakarta|dki/.test(s)) return 'jakarta';
+    return s; // unknown — compare literally
   }
-}
 
-function clearAiResults() {
-  document.getElementById('aiInput').value = '';
-  document.getElementById('aiStatus').textContent = '';
-  document.getElementById('aiChips').innerHTML = '';
-  aiResults = null;
-  renderHelpers();
-}
-
-async function aiLogin() {
-  const email = document.getElementById('aiEmail').value.trim();
-  const pw = document.getElementById('aiPassword').value;
-  const err = document.getElementById('aiLoginErr');
-  if (!email || !pw) { err.textContent = 'Enter email and password'; err.style.display = 'block'; return; }
-  try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
-    if (error) throw error;
-    aiSession = data.session;
-    document.getElementById('aiLoginBox').style.display = 'none';
-    document.getElementById('aiStatus').textContent = 'Signed in — running search...';
-    runAiSearch();
-  } catch (e) {
-    err.textContent = e.message || 'Login failed'; err.style.display = 'block';
-  }
-}
-
-async function ensureAiAuth() {
-  if (aiSession) return aiSession.access_token;
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) { aiSession = session; return session.access_token; }
-  document.getElementById('aiLoginBox').style.display = 'block';
-  document.getElementById('aiEmail').focus();
-  return null;
-}
-
-function helperBmi(h) {
-  const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || 0;
-  const wt = parseFloat(String(h.weight||'').replace(/\s*kg$/i,'')) || 0;
-  if (!ht || !wt) return { bmi: null, build: null };
-  const bmi = Math.round(wt / ((ht/100) ** 2) * 10) / 10;
-  const build = bmi < 18.5 ? 'underweight' : bmi < 23 ? 'slim' : bmi < 25 ? 'average' : bmi < 30 ? 'heavy' : 'very heavy';
-  return { bmi, build };
-}
-
-// Call the Claude proxy with automatic retry on transient "Overloaded" /
-// rate-limit errors (Anthropic returns these under load). Exponential
-// backoff 1s -> 2s -> 4s. Non-transient errors throw immediately.
-async function callClaude(bodyObj, token, statusEl) {
-  const MAX_ATTEMPTS = 4;
-  let lastErr = '';
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    let result = null, httpStatus = 0;
-    try {
-      const resp = await fetch(CLAUDE_PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify(bodyObj),
-      });
-      httpStatus = resp.status;
-      result = await resp.json();
-    } catch (e) {
-      lastErr = e.message || 'Network error';
+  function toggleAiPanel() {
+    const panel = document.getElementById('aiPanel');
+    const btn = document.getElementById('aiToggleBtn');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      btn.style.background = '#059669';
+      document.getElementById('aiInput').focus();
+    } else {
+      btn.style.background = 'linear-gradient(135deg,#0D7377,#0a9396)';
     }
-    if (result && !result.error) return result;
-    const errMsg = result && result.error ? (result.error.message || JSON.stringify(result.error)) : lastErr;
-    const errType = result && result.error ? (result.error.type || '') : '';
-    lastErr = errMsg || ('HTTP ' + httpStatus) || 'AI request failed';
-    const transient = !result
-      || [429, 500, 502, 503, 529].includes(httpStatus)
-      || /overload|rate.?limit|capacity|temporarily|try again/i.test(errMsg + ' ' + errType);
-    if (!transient || attempt === MAX_ATTEMPTS) throw new Error(lastErr);
-    const waitMs = 1000 * Math.pow(2, attempt - 1);   // 1s, 2s, 4s
-    if (statusEl) statusEl.textContent = `Anthropic busy — retrying in ${waitMs / 1000}s (${attempt + 1}/${MAX_ATTEMPTS})...`;
-    await new Promise(r => setTimeout(r, waitMs));
   }
-  throw new Error(lastErr || 'AI request failed');
-}
 
-// Minimal HTML escape for chip labels (AI-sourced text may contain <, &, ").
-function escChip(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+  function clearAiResults() {
+    document.getElementById('aiInput').value = '';
+    document.getElementById('aiStatus').textContent = '';
+    document.getElementById('aiChips').innerHTML = '';
+    aiResults = null;
+    renderHelpers();
+  }
 
-// Translate the parsed criteria into plain-language chips. Structured criteria
-// become normal chips; free_requirements become distinct "verifying" chips so
-// the user sees exactly what was applied as a hard filter vs judged from the
-// work history. Returns [] when nothing at all was understood.
-function buildCriteriaChips(c) {
-  const chips = [];
-  const push = (label, free) => chips.push({ label, free: !!free });
-  if (c.age_min && c.age_max) push(`age ${c.age_min}–${c.age_max}`);
-  else if (c.age_min) push(`age ≥ ${c.age_min}`);
-  else if (c.age_max) push(`age ≤ ${c.age_max}`);
-  if (Array.isArray(c.birth_years) && c.birth_years.length) push(`born ${c.birth_years.join(', ')}`);
-  if (c.build === 'slim') push('slim build');
-  const skillLabel = { elderly: 'elderly care', infant: 'child care', cooking: 'cooking', housework: 'housework', disabled: 'disabled care' };
-  if (Array.isArray(c.skills_required)) c.skills_required.forEach(s => push(`${skillLabel[s] || s} skill ≥3`));
-  const cc = { sg: 'Singapore', my: 'Malaysia', hk: 'Hong Kong', tw: 'Taiwan', me: 'Middle East', home: 'home country' };
-  const cn = code => cc[code] || code;
-  if (Array.isArray(c.experience) && c.experience.length) push(`worked in: ${c.experience.map(cn).join(' + ')}`);
-  if (Array.isArray(c.experience_any) && c.experience_any.length) push(`worked in any: ${c.experience_any.map(cn).join(' / ')}`);
-  if (Array.isArray(c.experience_exclude) && c.experience_exclude.length) push(`exclude: ${c.experience_exclude.map(cn).join(', ')}`);
-  if (c.nationality) push(`nationality: ${c.nationality}`);
-  if (c.religion) push(`religion: ${c.religion}`);
-  if (c.education) { const em = { senior: 'senior high', junior: 'junior high', elementary: 'elementary' }; push(`education: ${em[c.education] || c.education}`); }
-  if (Array.isArray(c.region_include) && c.region_include.length) push(`region: ${c.region_include.join(', ')}`);
-  if (Array.isArray(c.region_exclude) && c.region_exclude.length) push(`exclude region: ${c.region_exclude.join(', ')}`);
-  // v2 structured criteria — green (hard-fact) chips: applied as a fast pre-filter
-  // against enriched profiles, with rank-time verification for un-enriched ones.
-  if (c.childcare_max_age != null) push(`children ≤${c.childcare_max_age} yrs (verified profiles)`);
-  if (c.min_total_years != null) push(`≥${c.min_total_years} years experience`);
-  if (Array.isArray(c.free_requirements)) c.free_requirements.forEach(f => push(`🔎 verifying from work history: ${f}`, true));
-  return chips;
-}
+  async function aiLogin() {
+    const email = document.getElementById('aiEmail').value.trim();
+    const pw = document.getElementById('aiPassword').value;
+    const err = document.getElementById('aiLoginErr');
+    if (!email || !pw) { err.textContent = 'Enter email and password'; err.style.display = 'block'; return; }
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      aiSession = data.session;
+      document.getElementById('aiLoginBox').style.display = 'none';
+      document.getElementById('aiStatus').textContent = 'Signed in — running search...';
+      runAiSearch();
+    } catch (e) {
+      err.textContent = e.message || 'Login failed'; err.style.display = 'block';
+    }
+  }
 
-function renderAiChips(chips) {
-  const el = document.getElementById('aiChips');
-  if (!el) return;
-  el.innerHTML = (chips || []).map(ch =>
-    `<span class="ai-chip ${ch.free ? 'ai-chip-free' : ''}">${escChip(ch.label)}</span>`).join('');
-}
+  async function ensureAiAuth() {
+    if (aiSession) return aiSession.access_token;
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) { aiSession = session; return session.access_token; }
+    document.getElementById('aiLoginBox').style.display = 'block';
+    document.getElementById('aiEmail').focus();
+    return null;
+  }
 
-async function runAiSearch() {
+  function helperBmi(h) {
+    const ht = parseFloat(String(h.height||'').replace(/\s*cm$/i,'')) || 0;
+    const wt = parseFloat(String(h.weight||'').replace(/\s*kg$/i,'')) || 0;
+    if (!ht || !wt) return { bmi: null, build: null };
+    const bmi = Math.round(wt / ((ht/100) ** 2) * 10) / 10;
+    const build = bmi < 18.5 ? 'underweight' : bmi < 23 ? 'slim' : bmi < 25 ? 'average' : bmi < 30 ? 'heavy' : 'very heavy';
+    return { bmi, build };
+  }
+
+  // Call the Claude proxy with automatic retry on transient "Overloaded" /
+  // rate-limit errors (Anthropic returns these under load). Exponential
+  // backoff 1s -> 2s -> 4s. Non-transient errors throw immediately.
+  async function callClaude(bodyObj, token, statusEl) {
+    const MAX_ATTEMPTS = 4;
+    let lastErr = '';
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let result = null, httpStatus = 0;
+      try {
+        const resp = await fetch(CLAUDE_PROXY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(bodyObj),
+        });
+        httpStatus = resp.status;
+        result = await resp.json();
+      } catch (e) {
+        lastErr = e.message || 'Network error';
+      }
+      if (result && !result.error) return result;
+      const errMsg = result && result.error ? (result.error.message || JSON.stringify(result.error)) : lastErr;
+      const errType = result && result.error ? (result.error.type || '') : '';
+      lastErr = errMsg || ('HTTP ' + httpStatus) || 'AI request failed';
+      const transient = !result
+        || [429, 500, 502, 503, 529].includes(httpStatus)
+        || /overload|rate.?limit|capacity|temporarily|try again/i.test(errMsg + ' ' + errType);
+      if (!transient || attempt === MAX_ATTEMPTS) throw new Error(lastErr);
+      const waitMs = 1000 * Math.pow(2, attempt - 1);   // 1s, 2s, 4s
+      if (statusEl) statusEl.textContent = `Anthropic busy — retrying in ${waitMs / 1000}s (${attempt + 1}/${MAX_ATTEMPTS})...`;
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+    throw new Error(lastErr || 'AI request failed');
+  }
+
+  // Translate the parsed criteria into plain-language chips. Structured criteria
+  // become normal chips; free_requirements become distinct "verifying" chips so
+  // the user sees exactly what was applied as a hard filter vs judged from the
+  // work history. Returns [] when nothing at all was understood.
+  function buildCriteriaChips(c) {
+    const chips = [];
+    const push = (label, free) => chips.push({ label, free: !!free });
+    if (c.age_min && c.age_max) push(`age ${c.age_min}–${c.age_max}`);
+    else if (c.age_min) push(`age ≥ ${c.age_min}`);
+    else if (c.age_max) push(`age ≤ ${c.age_max}`);
+    if (Array.isArray(c.birth_years) && c.birth_years.length) push(`born ${c.birth_years.join(', ')}`);
+    if (c.build === 'slim') push('slim build');
+    const skillLabel = { elderly: 'elderly care', infant: 'child care', cooking: 'cooking', housework: 'housework', disabled: 'disabled care' };
+    if (Array.isArray(c.skills_required)) c.skills_required.forEach(s => push(`${skillLabel[s] || s} skill ≥3`));
+    const cc = { sg: 'Singapore', my: 'Malaysia', hk: 'Hong Kong', tw: 'Taiwan', me: 'Middle East', home: 'home country' };
+    const cn = code => cc[code] || code;
+    if (Array.isArray(c.experience) && c.experience.length) push(`worked in: ${c.experience.map(cn).join(' + ')}`);
+    if (Array.isArray(c.experience_any) && c.experience_any.length) push(`worked in any: ${c.experience_any.map(cn).join(' / ')}`);
+    if (Array.isArray(c.experience_exclude) && c.experience_exclude.length) push(`exclude: ${c.experience_exclude.map(cn).join(', ')}`);
+    if (c.nationality) push(`nationality: ${c.nationality}`);
+    if (c.religion) push(`religion: ${c.religion}`);
+    if (c.education) { const em = { senior: 'senior high', junior: 'junior high', elementary: 'elementary' }; push(`education: ${em[c.education] || c.education}`); }
+    if (Array.isArray(c.region_include) && c.region_include.length) push(`region: ${c.region_include.join(', ')}`);
+    if (Array.isArray(c.region_exclude) && c.region_exclude.length) push(`exclude region: ${c.region_exclude.join(', ')}`);
+    // v2 structured criteria — green (hard-fact) chips: applied as a fast pre-filter
+    // against enriched profiles, with rank-time verification for un-enriched ones.
+    if (c.childcare_max_age != null) push(`children ≤${c.childcare_max_age} yrs (verified profiles)`);
+    if (c.min_total_years != null) push(`≥${c.min_total_years} years experience`);
+    if (Array.isArray(c.free_requirements)) c.free_requirements.forEach(f => push(`🔎 verifying from work history: ${f}`, true));
+    return chips;
+  }
+
+  function renderAiChips(chips) {
+    const el = document.getElementById('aiChips');
+    if (!el) return;
+    el.innerHTML = (chips || []).map(ch =>
+      `<span class="ai-chip ${ch.free ? 'ai-chip-free' : ''}">${escChip(ch.label)}</span>`).join('');
+  }
+
+  async function runAiSearch() {
   const query = document.getElementById('aiInput').value.trim();
   if (!query) return;
   const token = await ensureAiAuth();
@@ -1168,6 +1269,16 @@ Return ONLY the JSON array — at most 30 entries, nothing else.`
     console.error('AI search error:', e);
   }
   btn.disabled = false; btn.textContent = '🔍 Find Matching Helpers';
+  }
+
+  // Inline onclick attributes in the injected markup above resolve against
+  // `window` — these are the only AI functions that need to be reachable
+  // that way. ensureAiAuth/canonRegion/helperBmi/callClaude/buildCriteriaChips/
+  // renderAiChips stay closure-private (called only from inside runAiSearch).
+  window.runAiSearch = runAiSearch;
+  window.toggleAiPanel = toggleAiPanel;
+  window.clearAiResults = clearAiResults;
+  window.aiLogin = aiLogin;
 }
 
 async function deletePortalHelper(id, name) {
