@@ -496,6 +496,28 @@ function setDocHeader(docType, documentType) {
   subEl.textContent = pair[1];
 }
 
+// ── "Open full screen" ────────────────────────────────────────────────────────
+// The storage objects behind document_html_url are served with a text/plain
+// content-type (Supabase Storage's default at upload time), so a direct
+// <a href> link renders the document's RAW HTML SOURCE as text. The inline
+// preview never hits this because it injects the fetched text via iframe.srcdoc.
+// Fix: we already hold the fetched document in memory — open THAT in a new tab
+// as a Blob with the correct MIME type. Synchronous on click, so popup blockers
+// stay quiet.
+let fullDocHtml = null;    // booking_doc / html documents (renderForm stashes it)
+let fullDocPdfData = null; // ec_signing PDF bytes (copied BEFORE pdf.js detaches the buffer)
+function openFullDoc(kind) {
+  try {
+    let blob = null;
+    if (kind === 'pdf' && fullDocPdfData) blob = new Blob([fullDocPdfData], { type: 'application/pdf' });
+    if (kind === 'html' && fullDocHtml) blob = new Blob([fullDocHtml], { type: 'text/html' });
+    if (!blob) { alert('The document is still loading — please try again in a moment.'); return; }
+    window.open(URL.createObjectURL(blob), '_blank');
+  } catch (e) {
+    alert('Could not open the document: ' + e.message);
+  }
+}
+
 async function renderForm(d) {
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -519,7 +541,7 @@ async function renderForm(d) {
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap">
           <div style="font-size:10px;color:var(--muted)">Scroll to review all pages before signing</div>
-          ${d.document_html_url ? `<a href="${d.document_html_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--teal);font-weight:600;text-decoration:none;border:1px solid var(--teal);border-radius:6px;padding:4px 10px">🔍 Open full screen</a>` : ''}
+          ${d.document_html_url ? `<button type="button" onclick="openFullDoc('pdf')" style="font-size:11px;color:var(--teal);font-weight:600;background:none;cursor:pointer;border:1px solid var(--teal);border-radius:6px;padding:4px 10px;font-family:inherit">🔍 Open full screen</button>` : ''}
         </div>
       </div>`;
     // Render PDF pages using pdf.js
@@ -528,6 +550,9 @@ async function renderForm(d) {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         const resp = await fetch(d.document_html_url);
         const pdfData = await resp.arrayBuffer();
+        // Copy BEFORE pdf.js: getDocument transfers the buffer to its worker,
+        // detaching it — a later Blob([detached]) would be empty.
+        fullDocPdfData = pdfData.slice(0);
         const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
         const container = document.getElementById('ecPdfContainer');
         container.innerHTML = '';
@@ -581,7 +606,7 @@ async function renderForm(d) {
     if (d.document_html_url) {
       try {
         const resp = await fetch(d.document_html_url);
-        if (resp.ok) docHtml = await resp.text();
+        if (resp.ok) { docHtml = await resp.text(); fullDocHtml = docHtml; }
         else docHtml = '<div style="color:var(--danger);padding:20px">Failed to load document.</div>';
       } catch (e) {
         docHtml = '<div style="color:var(--danger);padding:20px">Error loading document: ' + e.message + '</div>';
@@ -606,7 +631,7 @@ async function renderForm(d) {
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap">
           <div style="font-size:10px;color:var(--muted)">Scroll to review the full document before signing</div>
-          ${d.document_html_url ? `<a href="${d.document_html_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--teal);font-weight:600;text-decoration:none;border:1px solid var(--teal);border-radius:6px;padding:4px 10px">🔍 Open full screen</a>` : ''}
+          ${d.document_html_url ? `<button type="button" onclick="openFullDoc('html')" style="font-size:11px;color:var(--teal);font-weight:600;background:none;cursor:pointer;border:1px solid var(--teal);border-radius:6px;padding:4px 10px;font-family:inherit">🔍 Open full screen</button>` : ''}
         </div>
       </div>`;
     setTimeout(() => {
