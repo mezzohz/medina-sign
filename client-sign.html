@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Medina Recruitment – Sign Document</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src https://lyikuogxcogsutpskdwb.supabase.co https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://lyikuogxcogsutpskdwb.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src blob:; object-src 'none'; base-uri 'none';">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
 <style>
   :root {
     --teal: #0D7377;
@@ -319,22 +320,38 @@
   <div id="successState" class="state-screen" style="display:none">
     <div class="success-check">✅</div>
     <div class="state-title">Signed Successfully!</div>
-    <div class="state-sub">Your signature has been recorded. You may close this page.<br><br>Your agency will be notified automatically.</div>
+    <div class="state-sub">Your signature has been recorded<span id="successSignedAt"></span>. You may close this page.<br><br>Your agency will be notified automatically.</div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4" integrity="sha384-lgSlM6FuFyxnTeAwtE2q3fv6RKIrgZw5gm5+VMSqZbzzdmG1aIaND53yM4cuhL8P" crossorigin="anonymous"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const CONSENT_VERSION = '2026-07-14.1';
+
+// esc(): minimal HTML-entity escape for every DB-derived value interpolated
+// into an innerHTML template string (2026-07-14 hardening — signing_rpc_gate_v1).
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// sha256Hex(bytesOrText): evidence hash — accepts an ArrayBuffer/Uint8Array or
+// a string (encoded via TextEncoder first).
+async function sha256Hex(data) {
+  const buf = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 let signingData = null;
 let canvas, ctx;
 let drawing = false;
 let paths = [];
 let currentPath = [];
+let docBytesForHash = null; // whatever document content was actually shown — fed to sha256Hex at submit time
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 let docType = 'renewal'; // 'renewal', 'installment', or 'booking_doc'
@@ -349,40 +366,21 @@ async function init() {
     return;
   }
 
-  let data, error;
+  // 2026-07-14 hardening: both tables are now looked up server-side by a
+  // single SECURITY DEFINER RPC (signing_rpc_gate_v1) — anon has zero direct
+  // table access any more. `data.source` tells us which table actually held
+  // the token, which is authoritative over a possibly-stale `?type=` param.
+  const { data, error } = await sb.rpc('signing_get', { p_token: token });
 
-  // booking_doc, booking_doc_fdw, booking_doc_sponsor1, booking_doc_sponsor2, ec_signing
-  if (docType === 'booking_doc' || docType.startsWith('booking_doc_') || docType === 'ec_signing') {
-    // Fetch from signing_requests (booking document — employer / FDW / sponsor / EC)
-    const res = await sb.from('signing_requests').select('*').eq('token', token).single();
-    data = res.data; error = res.error;
-    if (error || !data) { showError('Link Invalid', 'This signing link is invalid or not found.'); return; }
-    if (new Date(data.expires_at) < new Date()) { showError('Link Expired', 'This signing link has expired. Please contact your agency.'); return; }
-    if (data.status === 'signed' && data.signature_image) {
-      document.getElementById('signedDate').textContent = new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      showScreen('signedState');
-      return;
-    }
-    if (data.status === 'revoked') { showError('Link Revoked', 'This signing request has been cancelled.'); return; }
-    signingData = data;
-    renderForm(signingData);
-    showScreen('formState');
-    setTimeout(initCanvas, 100);
+  if (error || !data) {
+    showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
     return;
   }
 
-  if (docType === 'installment') {
-    // Fetch from installment_schedules
-    const res = await sb.from('installment_schedules').select('*').eq('signing_token', token).single();
-    data = res.data; error = res.error;
-
-    if (error || !data) {
-      showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
-      return;
-    }
-
+  if (data.source === 'installment_schedules') {
+    docType = 'installment';
     if (data.status !== 'pending_signature') {
-      if (data.signature_data) {
+      if (data.has_signature) {
         document.getElementById('signedDate').textContent =
           new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
         showScreen('signedState');
@@ -391,48 +389,37 @@ async function init() {
       showError('Link Invalid', 'This agreement has already been processed.');
       return;
     }
-
-    // Map installment data to common format
     signingData = {
-      token: data.signing_token,
-      employer_name: data.emp_name,
-      employer_nric: data.emp_nric,
+      token: data.token,
+      employer_name: data.employer_name,
+      employer_nric: data.employer_nric,
       helper_name: data.helper_name,
       total_amount: data.total_amount,
       installments: data.installments,
-      ea_personnel: data.ea_personnel,
-      ea_reg_no: data.ea_reg_no,
-      emp_addr: data.emp_addr,
-      emp_phone: data.emp_phone,
     };
+    docBytesForHash = JSON.stringify({ total_amount: data.total_amount, installments: data.installments });
 
   } else {
-    // Fetch from signing_requests (renewal)
-    const res = await sb.from('signing_requests').select('*').eq('token', token).single();
-    data = res.data; error = res.error;
-
-    if (error || !data) {
-      showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
-      return;
-    }
-
-    if (new Date(data.expires_at) < new Date()) {
+    // booking_doc / booking_doc_* / ec_signing / renewal — all signing_requests,
+    // same precedence as before hardening: expiry, then signed, then revoked.
+    if (data.expires_at && new Date(data.expires_at) < new Date()) {
       showError('Link Expired', 'This signing link has expired. Please contact your agency to request a new one.');
       return;
     }
-
-    if (data.status === 'signed' && data.signature_image) {
+    if (data.status === 'signed' && data.has_signature) {
       document.getElementById('signedDate').textContent =
         new Date(data.signed_at).toLocaleDateString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       showScreen('signedState');
       return;
     }
-
     if (data.status === 'revoked') {
       showError('Link Revoked', 'This signing request has been cancelled by your agency.');
       return;
     }
-
+    if (data.status !== 'pending') {
+      showError('Link Invalid', 'This signing link is invalid or not found. Please contact your agency.');
+      return;
+    }
     signingData = data;
   }
 
@@ -533,8 +520,8 @@ async function renderForm(d) {
       <div class="info-card" style="grid-column:span 2;text-align:center">
         <label>Document</label><span style="font-weight:700;color:var(--teal)">Employment Contract</span>
       </div>
-      <div class="info-card"><label>Employer</label><span>${d.employer_name || '—'}</span></div>
-      <div class="info-card"><label>Helper</label><span>${d.helper_name || '—'}</span></div>
+      <div class="info-card"><label>Employer</label><span>${esc(d.employer_name) || '—'}</span></div>
+      <div class="info-card"><label>Helper</label><span>${esc(d.helper_name) || '—'}</span></div>
       <div class="info-card" style="grid-column:span 2">
         <div id="ecPdfContainer" class="ec-pdf-viewer" style="margin-top:8px;text-align:center;padding:8px">
           <div style="color:var(--muted);padding:20px">Loading contract pages...</div>
@@ -553,6 +540,7 @@ async function renderForm(d) {
         // Copy BEFORE pdf.js: getDocument transfers the buffer to its worker,
         // detaching it — a later Blob([detached]) would be empty.
         fullDocPdfData = pdfData.slice(0);
+        docBytesForHash = pdfData.slice(0);
         const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
         const container = document.getElementById('ecPdfContainer');
         container.innerHTML = '';
@@ -570,7 +558,7 @@ async function renderForm(d) {
           await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         }
       } catch (e) {
-        document.getElementById('ecPdfContainer').innerHTML = '<div style="color:var(--danger);padding:20px">Error loading contract: ' + e.message + '</div>';
+        document.getElementById('ecPdfContainer').innerHTML = '<div style="color:var(--danger);padding:20px">Error loading contract: ' + esc(e.message) + '</div>';
       }
     }
     // Attach checkbox listener (must not skip this via early return)
@@ -606,10 +594,15 @@ async function renderForm(d) {
     if (d.document_html_url) {
       try {
         const resp = await fetch(d.document_html_url);
-        if (resp.ok) { docHtml = await resp.text(); fullDocHtml = docHtml; }
+        if (resp.ok) {
+          const docBuf = await resp.arrayBuffer();
+          docBytesForHash = docBuf.slice(0);
+          docHtml = new TextDecoder().decode(docBuf);
+          fullDocHtml = docHtml;
+        }
         else docHtml = '<div style="color:var(--danger);padding:20px">Failed to load document.</div>';
       } catch (e) {
-        docHtml = '<div style="color:var(--danger);padding:20px">Error loading document: ' + e.message + '</div>';
+        docHtml = '<div style="color:var(--danger);padding:20px">Error loading document: ' + esc(e.message) + '</div>';
       }
     }
     // Signer display block — name + role pill so signer sees exactly whose signature they are providing
@@ -617,17 +610,17 @@ async function renderForm(d) {
     const signerNricDisplay = d.signer_nric || (signerRole === 'fdw' ? d.helper_fin : d.employer_nric) || '—';
     document.getElementById('infoGrid').innerHTML = `
       <div class="info-card" style="grid-column:span 2;text-align:center">
-        <label>Document</label><span style="font-weight:700;color:var(--teal)">${label}</span>
+        <label>Document</label><span style="font-weight:700;color:var(--teal)">${esc(label)}</span>
       </div>
       <div class="info-card" style="grid-column:span 2;text-align:center;background:${roleInfo.color}15;border:1px solid ${roleInfo.color}33">
         <label style="color:${roleInfo.color}">Signing as</label>
-        <span style="font-weight:700;color:${roleInfo.color};font-size:15px">${roleInfo.icon} ${roleInfo.label}${d.signer_name || d.helper_name || d.employer_name ? ' — ' + (d.signer_name || (signerRole === 'fdw' ? d.helper_name : d.employer_name)) : ''}</span>
+        <span style="font-weight:700;color:${roleInfo.color};font-size:15px">${roleInfo.icon} ${roleInfo.label}${d.signer_name || d.helper_name || d.employer_name ? ' — ' + esc(d.signer_name || (signerRole === 'fdw' ? d.helper_name : d.employer_name)) : ''}</span>
       </div>
-      <div class="info-card"><label>Name</label><span>${signerDisplay}</span></div>
-      <div class="info-card"><label>NRIC / FIN / WP</label><span>${maskNric(signerNricDisplay)}</span></div>
+      <div class="info-card"><label>Name</label><span>${esc(signerDisplay)}</span></div>
+      <div class="info-card"><label>NRIC / FIN / WP</label><span>${esc(maskNric(signerNricDisplay))}</span></div>
       <div class="info-card" style="grid-column:span 2">
         <div class="doc-viewer-wrap">
-          <iframe id="docFrame" srcdoc=""></iframe>
+          <iframe id="docFrame" srcdoc="" sandbox="allow-same-origin"></iframe>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap">
           <div style="font-size:10px;color:var(--muted)">Scroll to review the full document before signing</div>
@@ -658,9 +651,9 @@ async function renderForm(d) {
         </tr></thead><tbody>`;
     installments.forEach(r => {
       const dt = new Date(r.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-      tableHtml += `<tr><td style="padding:6px 10px;border-top:1px solid var(--border)">${r.no}</td>
-        <td style="padding:6px 10px;border-top:1px solid var(--border);font-weight:600">SGD ${r.amount.toFixed(2)}</td>
-        <td style="padding:6px 10px;border-top:1px solid var(--border)">${dt}</td></tr>`;
+      tableHtml += `<tr><td style="padding:6px 10px;border-top:1px solid var(--border)">${esc(r.no)}</td>
+        <td style="padding:6px 10px;border-top:1px solid var(--border);font-weight:600">SGD ${esc(r.amount.toFixed(2))}</td>
+        <td style="padding:6px 10px;border-top:1px solid var(--border)">${esc(dt)}</td></tr>`;
     });
     tableHtml += `<tr style="background:#f8fafc;font-weight:700">
       <td style="padding:8px 10px;border-top:2px solid var(--border)">Total</td>
@@ -668,21 +661,24 @@ async function renderForm(d) {
     </tr></tbody></table></div>`;
 
     document.getElementById('infoGrid').innerHTML = `
-      <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
-      <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
-      <div class="info-card"><label>Helper Name</label><span>${d.helper_name || '—'}</span></div>
+      <div class="info-card"><label>Employer Name</label><span>${esc(d.employer_name) || '—'}</span></div>
+      <div class="info-card"><label>Employer NRIC</label><span>${esc(maskNric(d.employer_nric))}</span></div>
+      <div class="info-card"><label>Helper Name</label><span>${esc(d.helper_name) || '—'}</span></div>
       <div class="info-card"><label>Total Amount</label><span style="font-weight:700;color:#0e7490">SGD ${total.toFixed(2)}</span></div>
       <div class="info-card"><label>No. of Installments</label><span>${installments.length}</span></div>
       <div class="info-card"><label>Document</label><span>Installment Agreement</span></div>
       <div class="info-card" style="grid-column:span 2">${tableHtml}</div>`;
   } else {
     document.getElementById('infoGrid').innerHTML = `
-      <div class="info-card"><label>Helper Name</label><span>${d.helper_name || d.helper_fin || '—'}</span></div>
-      <div class="info-card"><label>Helper FIN</label><span>${d.helper_fin || '—'}</span></div>
-      <div class="info-card"><label>Employer Name</label><span>${d.employer_name || '—'}</span></div>
-      <div class="info-card"><label>Employer NRIC</label><span>${maskNric(d.employer_nric)}</span></div>
+      <div class="info-card"><label>Helper Name</label><span>${esc(d.helper_name || d.helper_fin) || '—'}</span></div>
+      <div class="info-card"><label>Helper FIN</label><span>${esc(d.helper_fin) || '—'}</span></div>
+      <div class="info-card"><label>Employer Name</label><span>${esc(d.employer_name) || '—'}</span></div>
+      <div class="info-card"><label>Employer NRIC</label><span>${esc(maskNric(d.employer_nric))}</span></div>
       <div class="info-card"><label>Date</label><span>${today}</span></div>
       <div class="info-card"><label>Document</label><span>WP Renewal Declaration</span></div>`;
+    // No fetched document for this flow — evidence hash covers the static
+    // declaration text actually shown on this page (the on-page agreement).
+    docBytesForHash = document.querySelector('.declaration-box')?.innerText || 'renewal_declaration';
   }
 
   document.getElementById('consentCheck').addEventListener('change', function() {
@@ -816,16 +812,19 @@ async function submitSignature() {
   btn.disabled = true;
   btn.textContent = '⏳ Submitting...';
 
-  let error;
+  // 2026-07-14 hardening: every table write now goes through the
+  // signing_submit SECURITY DEFINER RPC (single-use + server-timed +
+  // evidenced, server-side). The EC PDF overlay/upload below is UNCHANGED —
+  // it still writes to the `documents` storage bucket with the anon key
+  // directly, because that bucket's anon write policy was deliberately left
+  // in place this round (see the report: dropping it would break this exact
+  // flow, and a same-day replacement wasn't safe to improvise).
+  const flow = docType === 'installment' ? 'installment'
+             : docType === 'ec_signing' ? 'ec_signing'
+             : (docType === 'booking_doc' || docType.startsWith('booking_doc_')) ? 'booking_doc'
+             : 'renewal';
 
-  if (docType === 'installment') {
-    const res = await sb.from('installment_schedules').update({
-      signature_data: base64,
-      signed_at: new Date().toISOString(),
-      status: 'active',
-    }).eq('signing_token', signingData.token).eq('status', 'pending_signature');
-    error = res.error;
-  } else if (docType === 'ec_signing') {
+  if (flow === 'ec_signing') {
     // EC: overlay employer signature on the PDF and save final copy
     btn.textContent = '⏳ Overlaying signature...';
     try {
@@ -851,77 +850,31 @@ async function submitSignature() {
 
       const finalBytes = await pdfDoc.save();
 
-      // Upload final signed PDF
+      // Upload final signed PDF (anon write to `documents` — deliberately
+      // untouched storage policy, see note above)
       btn.textContent = '⏳ Saving document...';
       const workerName = (signingData.helper_name || 'Unknown').toUpperCase();
-      const filename = `documents/EC ${workerName}.pdf`;
-      const uploadUrl = 'https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/' + encodeURIComponent(filename.replace('documents/', ''));
-
-      // Use anon key for upload (storage has public write for documents bucket)
-      const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
       await fetch('https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/EC ' + encodeURIComponent(workerName) + '.pdf', {
         method: 'PUT',
-        headers: { 'apikey': anonKey, 'Authorization': 'Bearer ' + anonKey, 'Content-Type': 'application/pdf' },
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/pdf' },
         body: new Blob([finalBytes], { type: 'application/pdf' })
       });
     } catch (e) {
       console.error('EC overlay error:', e);
     }
-
-    // Update signing request
-    const res = await sb.from('signing_requests').update({
-      signature_image: base64,
-      signed_at: new Date().toISOString(),
-      status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending').select();
-    error = res.error;
-    if (!error && (!res.data || res.data.length === 0)) {
-      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
-    }
-  } else if (docType === 'booking_doc' || docType.startsWith('booking_doc_')) {
-    const nowIso = new Date().toISOString();
-    const res = await sb.from('signing_requests').update({
-      signature_image: base64,
-      signed_at: nowIso,
-      status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending').select();
-    error = res.error;
-    if (!error && (!res.data || res.data.length === 0)) {
-      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
-    }
-    // ── Phase 4: propagate bundle signature to the matching MOM Declaration row ──
-    // If this bundle signing is for a booking that also has a pending declaration
-    // signing_requests row for the same signer_role, reuse the signature there so
-    // the standalone declaration's "Compose" flow sees it as signed too.
-    if (!error && signingData.booking_ref && (signingData.signer_role || docType !== 'booking_doc_fdw' && docType !== 'booking_doc')) {
-      const role = (signingData.signer_role || '').toLowerCase() ||
-        (docType === 'booking_doc' ? 'employer' : docType.replace('booking_doc_', ''));
-      if (role) {
-        try {
-          await sb.from('signing_requests')
-            .update({ signature_image: base64, signed_at: nowIso, status: 'signed' })
-            .eq('booking_ref', signingData.booking_ref)
-            .eq('document_type', 'declaration')
-            .eq('signer_role', role)
-            .eq('status', 'pending');
-          // Ignore errors here — the main signature already saved. Declaration
-          // sync is a convenience to keep the Compose PDF in sync.
-        } catch (syncErr) {
-          console.warn('[declaration-sync] failed, main signature still saved:', syncErr);
-        }
-      }
-    }
-  } else {
-    const res = await sb.from('signing_requests').update({
-      signature_image: base64,
-      signed_at: new Date().toISOString(),
-      status: 'signed',
-    }).eq('token', signingData.token).eq('status', 'pending').select();
-    error = res.error;
-    if (!error && (!res.data || res.data.length === 0)) {
-      error = { message: 'Signature not saved — the link may have already been used or expired. Please contact your agency.' };
-    }
+    btn.textContent = '⏳ Submitting...';
   }
+
+  const docSha256 = await sha256Hex(docBytesForHash ?? ('no-document-content:' + signingData.token));
+  const { data: result, error } = await sb.rpc('signing_submit', { p: {
+    token: signingData.token,
+    flow,
+    signature_b64: base64,
+    doc_sha256: docSha256,
+    consent_version: CONSENT_VERSION,
+    client_time: new Date().toISOString(),
+    user_agent: navigator.userAgent,
+  }});
 
   if (error) {
     btn.disabled = false;
@@ -930,6 +883,10 @@ async function submitSignature() {
     return;
   }
 
+  const signedAtEl = document.getElementById('successSignedAt');
+  if (signedAtEl && result?.signed_at) {
+    signedAtEl.textContent = ' at ' + new Date(result.signed_at).toLocaleString('en-SG', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
   showScreen('successState');
   if (navigator.vibrate) navigator.vibrate(200);
 }

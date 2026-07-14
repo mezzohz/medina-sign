@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Medina Recruitment – Sign Declaration</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://lyikuogxcogsutpskdwb.supabase.co; img-src 'self' data: blob: https://lyikuogxcogsutpskdwb.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src https://lyikuogxcogsutpskdwb.supabase.co; object-src 'none'; base-uri 'none';">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -118,7 +119,7 @@
   <div id="successState" class="state-screen" style="display:none">
     <div class="state-icon" style="color:var(--success)">🎉</div>
     <div class="state-title">Signature Received</div>
-    <div class="state-sub">Thank you. Your signature has been recorded. You may close this page.</div>
+    <div class="state-sub">Thank you. Your signature has been recorded<span id="successSignedAt"></span>. You may close this page.</div>
   </div>
 
   <!-- FORM -->
@@ -138,7 +139,7 @@
 
       <div class="card">
         <h3>Declaration Document</h3>
-        <iframe id="pdfFrame" class="pdfFrame" title="Declaration PDF"></iframe>
+        <iframe id="pdfFrame" class="pdfFrame" title="Declaration PDF" sandbox="allow-same-origin"></iframe>
         <div class="pdf-hint">Scroll to review · <a id="pdfLink" href="#" target="_blank" style="color:var(--teal);font-weight:600">🔍 Open full screen</a></div>
       </div>
 
@@ -168,12 +169,27 @@
   <div class="footer">Medina Recruitment · Singapore · EA License 24C2216</div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4" integrity="sha384-lgSlM6FuFyxnTeAwtE2q3fv6RKIrgZw5gm5+VMSqZbzzdmG1aIaND53yM4cuhL8P" crossorigin="anonymous"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5aWt1b2d4Y29nc3V0cHNrZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MTM1MzEsImV4cCI6MjA4ODE4OTUzMX0.o4YvvVRBONCtVP8WKlRviBA8jFAmGJaFEBme2jrcha4';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const CONSENT_VERSION = '2026-07-14.1';
+
+// esc(): minimal HTML-entity escape, added 2026-07-14 for parity with
+// client-sign.html (signing_rpc_gate_v1 hardening). This page currently
+// renders every DB-derived value via .textContent (already injection-safe),
+// but the helper is kept available for any future innerHTML use.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function sha256Hex(data) {
+  const buf = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const ROLE_LABELS = {
   fdw:      'FDW (Helper)',
@@ -188,6 +204,7 @@ let canvas, ctx;
 let drawing = false;
 let paths = [];
 let currentPath = [];
+let docBytesForHash = null; // PDF bytes for the evidence hash — fetched alongside the iframe preview
 
 // ── STATE HELPERS ───────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -214,16 +231,19 @@ async function init() {
   const token = new URLSearchParams(window.location.search).get('token');
   if (!token) { showError('No Signing Token', 'This link appears to be incomplete. Please use the link sent to you.'); return; }
 
-  const { data, error } = await sb.from('signing_requests').select('*').eq('token', token).single();
+  // 2026-07-14 hardening: anon has zero direct table access any more —
+  // looked up via the signing_get SECURITY DEFINER RPC (signing_rpc_gate_v1).
+  const { data, error } = await sb.rpc('signing_get', { p_token: token });
 
   if (error || !data) { showError('Link Invalid', 'This signing link is invalid or has been revoked.'); return; }
   if (data.kind !== 'declaration') { showError('Wrong Link', 'This link is not a declaration signing link.'); return; }
   if (data.expires_at && new Date(data.expires_at) < new Date()) { showError('Link Expired', 'This signing link has expired. Please contact your agency.'); return; }
   if (data.status === 'revoked') { showError('Link Revoked', 'This signing request has been cancelled.'); return; }
-  if (data.status === 'signed' && data.signature_image) {
+  if (data.status === 'signed' && data.has_signature) {
     document.getElementById('signedDate').textContent = fmtDate(data.signed_at);
     showScreen('signedState'); return;
   }
+  if (data.status !== 'pending') { showError('Link Invalid', 'This signing link is invalid or has been revoked.'); return; }
 
   signingData = data;
   renderForm(data);
@@ -244,6 +264,10 @@ function renderForm(d) {
     const url = d.pdf_url + '#page=' + (d.page || 1) + '&toolbar=0&navpanes=0&view=FitH';
     document.getElementById('pdfFrame').src = url;
     document.getElementById('pdfLink').href = d.pdf_url;
+    // Evidence hash of the actual PDF bytes being signed — fetched alongside
+    // the iframe preview (the iframe loads it natively; this is a separate
+    // fetch purely so crypto.subtle.digest has real bytes at submit time).
+    fetch(d.pdf_url).then(r => r.arrayBuffer()).then(buf => { docBytesForHash = buf; }).catch(() => {});
   }
 
   document.getElementById('consentCheck').addEventListener('change', updateSubmitState);
@@ -352,14 +376,19 @@ async function submitSignature() {
   btn.disabled = true;
   btn.textContent = '⏳ Submitting…';
 
-  const { error } = await sb.from('signing_requests')
-    .update({
-      signature_image: base64,
-      signed_at: new Date().toISOString(),
-      status: 'signed',
-    })
-    .eq('token', signingData.token)
-    .eq('status', 'pending');
+  // 2026-07-14 hardening: single-use, server-timed, evidenced write via the
+  // signing_submit SECURITY DEFINER RPC (signing_rpc_gate_v1) — previously a
+  // direct anon UPDATE with no server-side single-use enforcement at all.
+  const docSha256 = await sha256Hex(docBytesForHash ?? ('no-document-content:' + signingData.token));
+  const { data: result, error } = await sb.rpc('signing_submit', { p: {
+    token: signingData.token,
+    flow: 'declaration',
+    signature_b64: base64,
+    doc_sha256: docSha256,
+    consent_version: CONSENT_VERSION,
+    client_time: new Date().toISOString(),
+    user_agent: navigator.userAgent,
+  }});
 
   if (error) {
     btn.disabled = false;
@@ -368,6 +397,10 @@ async function submitSignature() {
     return;
   }
 
+  const signedAtEl = document.getElementById('successSignedAt');
+  if (signedAtEl && result?.signed_at) {
+    signedAtEl.textContent = ' at ' + fmtDate(result.signed_at);
+  }
   showScreen('successState');
   if (navigator.vibrate) navigator.vibrate(200);
 }
