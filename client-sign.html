@@ -591,14 +591,27 @@ async function renderForm(d) {
     };
     const label = docTypeLabels[d.document_type] || d.document_type;
     let docHtml = '<div style="text-align:center;padding:20px;color:var(--muted)">Loading document...</div>';
+    // Content sniffing (2026-07-27): a PDF reached through a booking_doc-typed
+    // link (e.g. an Employment Contract token copied from the Signed Docs
+    // panel with the generic type) used to be TEXT-DECODED and injected —
+    // the employer saw 2MB of raw "%PDF-1.7 ..." bytes instead of their
+    // contract (found live on BK-2607-9211). The magic bytes decide the
+    // viewer now, so no link-type mistake can ever dump bytes again.
+    let isPdfDoc = false;
     if (d.document_html_url) {
       try {
         const resp = await fetch(d.document_html_url);
         if (resp.ok) {
           const docBuf = await resp.arrayBuffer();
           docBytesForHash = docBuf.slice(0);
-          docHtml = new TextDecoder().decode(docBuf);
-          fullDocHtml = docHtml;
+          isPdfDoc = docBuf.byteLength >= 5
+            && new TextDecoder('ascii').decode(docBuf.slice(0, 5)) === '%PDF-';
+          if (isPdfDoc) {
+            fullDocPdfData = docBuf.slice(0);
+          } else {
+            docHtml = new TextDecoder().decode(docBuf);
+            fullDocHtml = docHtml;
+          }
         }
         else docHtml = '<div style="color:var(--danger);padding:20px">Failed to load document.</div>';
       } catch (e) {
@@ -619,15 +632,44 @@ async function renderForm(d) {
       <div class="info-card"><label>Name</label><span>${esc(signerDisplay)}</span></div>
       <div class="info-card"><label>NRIC / FIN / WP</label><span>${esc(maskNric(signerNricDisplay))}</span></div>
       <div class="info-card" style="grid-column:span 2">
-        <div class="doc-viewer-wrap">
-          <iframe id="docFrame" srcdoc="" sandbox="allow-same-origin"></iframe>
-        </div>
+        ${isPdfDoc
+          ? `<div id="docPdfContainer" class="ec-pdf-viewer" style="text-align:center;padding:8px">
+               <div style="color:var(--muted);padding:20px">Loading document pages...</div>
+             </div>`
+          : `<div class="doc-viewer-wrap">
+               <iframe id="docFrame" srcdoc="" sandbox="allow-same-origin"></iframe>
+             </div>`}
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap">
           <div style="font-size:10px;color:var(--muted)">Scroll to review the full document before signing</div>
-          ${d.document_html_url ? `<button type="button" onclick="openFullDoc('html')" style="font-size:11px;color:var(--teal);font-weight:600;background:none;cursor:pointer;border:1px solid var(--teal);border-radius:6px;padding:4px 10px;font-family:inherit">🔍 Open full screen</button>` : ''}
+          ${d.document_html_url ? `<button type="button" onclick="openFullDoc('${isPdfDoc ? 'pdf' : 'html'}')" style="font-size:11px;color:var(--teal);font-weight:600;background:none;cursor:pointer;border:1px solid var(--teal);border-radius:6px;padding:4px 10px;font-family:inherit">🔍 Open full screen</button>` : ''}
         </div>
       </div>`;
-    setTimeout(() => {
+    if (isPdfDoc) {
+      // Same pdf.js page-by-page viewer the ec_signing branch uses. Copy the
+      // buffer first — getDocument transfers it to the worker and detaches it.
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const pdf = await pdfjsLib.getDocument({ data: fullDocPdfData.slice(0) }).promise;
+        const container = document.getElementById('docPdfContainer');
+        container.innerHTML = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = '100%';
+          canvas.style.marginBottom = '8px';
+          canvas.style.borderBottom = i < pdf.numPages ? '2px solid #e2e8f0' : 'none';
+          container.appendChild(canvas);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+      } catch (e) {
+        const container = document.getElementById('docPdfContainer');
+        if (container) container.innerHTML = '<div style="color:var(--danger);padding:20px">Error loading document: ' + esc(e.message) + '</div>';
+      }
+    } else setTimeout(() => {
       const frame = document.getElementById('docFrame');
       if (frame) {
         frame.srcdoc = docHtml;
