@@ -153,7 +153,7 @@
         <!-- Primary action: opens the real PDF in a new tab. Bulletproof across
              every browser and in-app (WhatsApp/Instagram) webview, where the
              inline preview below may refuse to render. -->
-        <a id="pdfOpen" class="doc-btn" href="#" target="_blank" rel="noopener noreferrer">📄 View / Download Declaration</a>
+        <a id="pdfOpen" class="doc-btn" href="#" target="_blank" rel="noopener noreferrer">🔍 Open full screen</a>
         <!-- Inline preview = progressive enhancement only. Deliberately NOT
              sandboxed: sandbox="allow-same-origin" silently blocks Chromium's
              built-in PDF viewer (blank grey box + 🚫), which regressed the
@@ -162,7 +162,7 @@
              and the browser's native PDF viewer is itself sandboxed, so the
              attribute added no real protection. Keep it OFF. -->
         <iframe id="pdfFrame" class="pdfFrame" title="Declaration PDF"></iframe>
-        <div class="pdf-hint">Document not showing above? Tap <strong>📄 View / Download Declaration</strong> — it opens in a new tab.</div>
+        <div class="pdf-hint">Document not showing above? Tap <strong>🔍 Open full screen</strong> — it opens in a new tab.</div>
       </div>
 
       <div class="card">
