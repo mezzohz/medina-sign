@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Medina Staff Portal — Helper Management</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.1" integrity="sha384-6uukdHiftld8tJvsEnb1GXdOm6/h98QIKjmAy6BI4WpoHahjbaBL8IVhavKP2sxI" crossorigin="anonymous"></script>
 <style>
   :root { --teal:#0D7377; --dark:#0A1628; --cream:#F5F7FA; --white:#fff; --border:#E2E8F0; --muted:#64748B; --red:#dc2626; --green:#059669; }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -67,6 +67,9 @@
   .result-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:6px; }
   .result-item.ok { background:#f0fdf4; color:#166534; }
   .result-item.err { background:#fef2f2; color:#991b1b; }
+  /* A staff-cancelled staging gate is a deliberate choice, not a failure —
+     it gets the neutral amber treatment, never the red one. */
+  .result-item.skip { background:#fef3c7; color:#b45309; }
   .result-item .icon { font-size:16px; flex-shrink:0; }
 
   /* HELPERS GRID */
@@ -295,19 +298,28 @@ async function handleFiles(fileList) {
       const name = await processOneBiodata(file);
       results.push({ ok: true, label: name + ' — ' + file.name });
     } catch (e) {
-      results.push({ ok: false, label: file.name + ': ' + e.message });
+      // A cancelled staging gate throws a marked error so it lands in its own
+      // bucket — staff choosing NOT to stage is not an upload failure.
+      if (e.skipped) results.push({ skip: true, label: e.message });
+      else results.push({ ok: false, label: file.name + ': ' + e.message });
     }
   }
 
   bar.style.width = '100%';
-  text.textContent = 'Done! ' + results.filter(r => r.ok).length + ' uploaded, ' + results.filter(r => !r.ok).length + ' failed.';
+  const okCount = results.filter(r => r.ok).length;
+  const skipCount = results.filter(r => r.skip).length;
+  const failCount = results.length - okCount - skipCount;
+  text.textContent = 'Done! ' + okCount + ' uploaded'
+    + (skipCount ? ', ' + skipCount + ' skipped' : '') + ', ' + failCount + ' failed.';
   detail.textContent = '';
 
   const rw = document.getElementById('resultsWrap');
   rw.style.display = 'block';
-  rw.innerHTML = results.map(r =>
-    `<div class="result-item ${r.ok ? 'ok' : 'err'}"><span class="icon">${r.ok ? '✅' : '❌'}</span>${r.label}</div>`
-  ).join('');
+  rw.innerHTML = results.map(r => {
+    const cls = r.ok ? 'ok' : r.skip ? 'skip' : 'err';
+    const icon = r.ok ? '✅' : r.skip ? '⏭' : '❌';
+    return `<div class="result-item ${cls}"><span class="icon">${icon}</span>${r.label}</div>`;
+  }).join('');
 
   await loadStats();
   await loadHelpers();
@@ -387,6 +399,26 @@ Return ONLY the JSON, nothing else.` }
       photoWarn = pj.error || 'no photo found in PDF';
     }
   } catch (e) { photoWarn = 'photo extractor unreachable: ' + e.message; }
+
+  // ── STAGING GATE ──
+  // A profile with no photo (or no biodata PDF) is a dead card on the public
+  // portal, and that is exactly how ~1 month of silent extractor failures went
+  // unnoticed. Staging incomplete is still allowed — but only as a conscious
+  // decision, never as a default. Cancel = this file is skipped, nothing is
+  // inserted, and the storage upload above is simply left unreferenced.
+  const missing = [];
+  if (!d.photo_url) missing.push('photo');
+  if (!d.biodata_pdf) missing.push('biodata PDF');
+  if (missing.length) {
+    const who = d.full_name || file.name;
+    const reason = photoWarn ? '\n\nReason: ' + photoWarn : '';
+    if (!confirm('Stage ' + who + ' without a ' + missing.join(' and ') + '?' + reason)) {
+      // Marked error, not a plain throw — handleFiles renders it as a neutral skip.
+      const skip = new Error(who + ' — skipped — missing ' + missing.join(' + '));
+      skip.skipped = true;
+      throw skip;
+    }
+  }
 
   // Get session user for created_by
   const { data: { session } } = await sb.auth.getSession();
