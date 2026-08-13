@@ -186,6 +186,7 @@
         <option value="">All</option>
       </select>
       <div class="count-tag" id="gridCount"></div>
+      <button id="fixPhotosBtn" onclick="fixMissingPhotos()" style="padding:8px 14px;border-radius:8px;border:1.5px solid #0d9488;background:#fff;color:#0d9488;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer" title="Re-extract photos from biodata PDFs for profiles missing one">🖼 Fix missing photos</button>
     </div>
 
     <div class="bulk-bar" id="bulkBar">
@@ -365,23 +366,27 @@ Return ONLY the JSON, nothing else.` }
   const { error: upErr } = await sb.storage.from('biodata').upload(pdfName, file, { upsert: true, contentType: 'application/pdf' });
   if (!upErr) d.biodata_pdf = pdfName;
 
-  // Extract photo
+  // Extract photo — pdf-service /extract-photo takes JSON {pdf_base64} and
+  // returns JSON {success, photo_base64, mime_type}. The old multipart-FormData
+  // request gets a 415 error wrapped in HTTP 200, which is how every profile
+  // staged 10-08→12-08-2026 silently lost its photo. Failures are surfaced in
+  // the result line now, never swallowed.
+  let photoWarn = '';
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    const photoResp = await fetch(RENDER_URL + '/extract-photo', { method:'POST', body: formData });
-    if (photoResp.ok) {
-      const blob = await photoResp.blob();
-      if (blob.size > 1000) {
-        const photoName = `portal_${Date.now()}_photo.jpg`;
-        const { error: phErr } = await sb.storage.from('biodata').upload(photoName, blob, { upsert: true, contentType: 'image/jpeg' });
-        if (!phErr) {
-          const { data: urlData } = sb.storage.from('biodata').getPublicUrl(photoName);
-          d.photo_url = urlData.publicUrl;
-        }
-      }
+    const photoResp = await fetch(RENDER_URL + '/extract-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdf_base64: base64 })
+    });
+    const pj = await photoResp.json();
+    if (pj.success && pj.photo_base64) {
+      const url = await uploadPortalPhoto(pj);
+      if (url) d.photo_url = url;
+      else photoWarn = 'photo upload failed';
+    } else {
+      photoWarn = pj.error || 'no photo found in PDF';
     }
-  } catch (e) { /* optional */ }
+  } catch (e) { photoWarn = 'photo extractor unreachable: ' + e.message; }
 
   // Get session user for created_by
   const { data: { session } } = await sb.auth.getSession();
@@ -390,7 +395,61 @@ Return ONLY the JSON, nothing else.` }
 
   const { error: insErr } = await sb.from('portal_helpers').insert([d]);
   if (insErr) throw new Error(insErr.message);
-  return d.full_name || file.name;
+  return (d.full_name || file.name) + (photoWarn ? ' — ⚠ NO PHOTO (' + photoWarn + ')' : '');
+}
+
+// Decode the extractor's base64 photo and upload it to the biodata bucket.
+// Returns the public URL, or null on failure.
+async function uploadPortalPhoto(pj) {
+  const bin = atob(pj.photo_base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const ext = pj.mime_type === 'image/png' ? 'png' : 'jpg';
+  const photoName = `portal_${Date.now()}_photo.${ext}`;
+  const { error } = await sb.storage.from('biodata')
+    .upload(photoName, new Blob([bytes], { type: pj.mime_type }), { upsert: true, contentType: pj.mime_type });
+  if (error) return null;
+  return sb.storage.from('biodata').getPublicUrl(photoName).data.publicUrl;
+}
+
+// Backfill photos for profiles that were staged while the extractor contract
+// was broken (or whenever extraction failed): re-fetch each profile's biodata
+// PDF from storage, run it through /extract-photo, upload, and stamp photo_url.
+async function fixMissingPhotos() {
+  const targets = allHelpers.filter(h => !h.photo_url && h.biodata_pdf);
+  if (!targets.length) { alert('No profiles are missing photos. ✅'); return; }
+  if (!confirm('Extract photos for ' + targets.length + ' profile(s) from their biodata PDFs?')) return;
+  const btn = document.getElementById('fixPhotosBtn');
+  let okCount = 0;
+  const fails = [];
+  for (let i = 0; i < targets.length; i++) {
+    const h = targets[i];
+    if (btn) btn.textContent = `🖼 Fixing ${i + 1}/${targets.length}…`;
+    try {
+      const pdfUrl = sb.storage.from('biodata').getPublicUrl(h.biodata_pdf).data.publicUrl;
+      const pdfResp = await fetch(pdfUrl);
+      if (!pdfResp.ok) throw new Error('PDF fetch HTTP ' + pdfResp.status);
+      const arr = new Uint8Array(await pdfResp.arrayBuffer());
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let j = 0; j < arr.length; j += CHUNK) bin += String.fromCharCode.apply(null, arr.subarray(j, j + CHUNK));
+      const resp = await fetch(RENDER_URL + '/extract-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdf_base64: btoa(bin) })
+      });
+      const pj = await resp.json();
+      if (!pj.success || !pj.photo_base64) throw new Error(pj.error || 'no photo found in PDF');
+      const url = await uploadPortalPhoto(pj);
+      if (!url) throw new Error('photo upload failed');
+      const { error: updErr } = await sb.from('portal_helpers').update({ photo_url: url }).eq('id', h.id);
+      if (updErr) throw new Error(updErr.message);
+      okCount++;
+    } catch (e) { fails.push(h.full_name + ': ' + e.message); }
+  }
+  if (btn) btn.textContent = '🖼 Fix missing photos';
+  alert('Photos fixed: ' + okCount + ' of ' + targets.length + (fails.length ? '\n\nFailed:\n' + fails.join('\n') : ' ✅'));
+  await loadHelpers();
 }
 
 // ── MANAGE HELPERS ────────────────────────────────────
