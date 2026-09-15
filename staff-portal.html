@@ -216,10 +216,68 @@ const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
 const RENDER_URL   = 'https://medina-pdf-service.onrender.com';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── STORAGE (biodata is a PRIVATE bucket) ────────────────────────────────────
+// Minimal inline copy of medina-crm's app-v2/js/utils.js resolveStorageUrl —
+// this page has no ES module import of utils.js, so the dual-mode (legacy
+// full public URL OR bare path) signing helper is duplicated here. Keep in
+// sync if the canonical version changes. Never throws — returns null on failure.
+function _storagePath(bucket, pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== 'string') return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const idx = pathOrUrl.indexOf(marker);
+  if (idx !== -1) {
+    const raw = pathOrUrl.slice(idx + marker.length).split(/[?#]/)[0];
+    try { return decodeURIComponent(raw); } catch { return raw; }
+  }
+  if (pathOrUrl.includes('/storage/v1/object/public/') || /^https?:\/\//i.test(pathOrUrl)) return null;
+  return pathOrUrl; // already a bare path
+}
+async function resolveStorageUrl(bucket, pathOrUrl, ttl = 3600) {
+  const path = _storagePath(bucket, pathOrUrl);
+  if (!path) return null;
+  try {
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, ttl);
+    if (error) throw error;
+    return data?.signedUrl || null;
+  } catch (e) {
+    console.warn('[resolveStorageUrl] failed to sign', bucket, path, e);
+    return null;
+  }
+}
+// Batch variant for rendering a grid of cards — one createSignedUrls call
+// (house pattern: medina-crm inbox.js wa-media signing). Returns a Map keyed
+// by the ORIGINAL input -> signed URL (or null).
+async function resolveStorageUrls(bucket, list, ttl = 3600) {
+  const result = new Map();
+  const pathToInputs = new Map();
+  for (const item of (list || [])) {
+    const path = _storagePath(bucket, item);
+    if (!path) { result.set(item, null); continue; }
+    if (!pathToInputs.has(path)) pathToInputs.set(path, []);
+    pathToInputs.get(path).push(item);
+  }
+  const paths = [...pathToInputs.keys()];
+  if (!paths.length) return result;
+  try {
+    const { data, error } = await sb.storage.from(bucket).createSignedUrls(paths, ttl);
+    if (error) throw error;
+    (data || []).forEach(row => {
+      for (const input of (pathToInputs.get(row?.path) || [])) result.set(input, row?.signedUrl || null);
+    });
+  } catch (e) {
+    console.warn('[resolveStorageUrls] batch sign failed', bucket, e);
+  }
+  return result;
+}
+
 let currentSession = null;
 let allHelpers = [];
 let manageMode = false;
 let selectedIds = new Set();
+// Generation guard for renderGrid() (async — awaits resolveStorageUrls
+// before its DOM writes). Bumped on every call so a slow-resolving call that
+// finishes after a newer call started never clobbers the newer render.
+let renderGen = 0;
 
 // ── AUTH ──────────────────────────────────────────────
 async function staffLogin() {
@@ -441,7 +499,11 @@ async function uploadPortalPhoto(pj) {
   const { error } = await sb.storage.from('biodata')
     .upload(photoName, new Blob([bytes], { type: pj.mime_type }), { upsert: true, contentType: pj.mime_type });
   if (error) return null;
-  return sb.storage.from('biodata').getPublicUrl(photoName).data.publicUrl;
+  // biodata stays a PUBLIC bucket (F3, batch-2 fix round) — the public
+  // candidate portal (medina-sign/helpers.html) renders photo_url raw as
+  // <img src> for anonymous visitors with no way to mint a signed URL, so
+  // this must remain a full public URL, not a bare path.
+  return SUPABASE_URL + '/storage/v1/object/public/biodata/' + photoName;
 }
 
 // Backfill photos for profiles that were staged while the extractor contract
@@ -458,7 +520,8 @@ async function fixMissingPhotos() {
     const h = targets[i];
     if (btn) btn.textContent = `🖼 Fixing ${i + 1}/${targets.length}…`;
     try {
-      const pdfUrl = sb.storage.from('biodata').getPublicUrl(h.biodata_pdf).data.publicUrl;
+      const pdfUrl = await resolveStorageUrl('biodata', h.biodata_pdf, 3600);
+      if (!pdfUrl) throw new Error('could not sign biodata PDF');
       const pdfResp = await fetch(pdfUrl);
       if (!pdfResp.ok) throw new Error('PDF fetch HTTP ' + pdfResp.status);
       const arr = new Uint8Array(await pdfResp.arrayBuffer());
@@ -495,7 +558,8 @@ function toTitle(s) { return s ? s.toLowerCase().replace(/\b\w/g, c => c.toUpper
 function calcAge(dob) { return dob ? Math.floor((Date.now() - new Date(dob)) / 31557600000) : null; }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-SG', { day:'2-digit', month:'short', year:'numeric' }) : ''; }
 
-function renderGrid() {
+async function renderGrid() {
+  const gen = ++renderGen;
   const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
   const statusF = document.getElementById('filterStatus')?.value || '';
   const filtered = allHelpers.filter(h => {
@@ -505,13 +569,18 @@ function renderGrid() {
   });
   document.getElementById('gridCount').textContent = filtered.length + ' helpers';
   if (!filtered.length) {
+    if (gen !== renderGen) return;
     document.getElementById('helperGrid').innerHTML = '<div class="empty">No helpers found.</div>';
     return;
   }
+  // biodata bucket is PRIVATE — batch-sign every visible card's photo up front.
+  const gridPhotoUrls = await resolveStorageUrls('biodata', filtered.map(h => h.photo_url), 3600);
+  if (gen !== renderGen) return;
   document.getElementById('helperGrid').innerHTML = filtered.map(h => {
     const age = calcAge(h.dob);
     const name = toTitle(h.full_name) || '—';
     const isSelected = selectedIds.has(h.id);
+    const cardPhotoUrl = gridPhotoUrls.get(h.photo_url);
     const expTags = [
       h.exp_sg ? 'Ex SG' : '', h.exp_hk ? 'Ex HK' : '',
       h.exp_tw ? 'Ex TW' : '', h.exp_my ? 'Ex MY' : '', h.exp_me ? 'Ex ME' : ''
@@ -520,7 +589,7 @@ function renderGrid() {
       onclick="${manageMode ? `toggleSelect('${h.id}')` : `openHelper('${h.id}')`}">
       ${manageMode ? `<div class="card-checkbox">${isSelected ? '✓' : ''}</div>` : ''}
       <div class="card-status-dot ${h.status !== 'active' ? 'inactive' : ''}"></div>
-      ${h.photo_url ? `<img class="card-photo" src="${h.photo_url}" loading="lazy">` : `<div class="card-photo-ph">${name[0]}</div>`}
+      ${cardPhotoUrl ? `<img class="card-photo" src="${cardPhotoUrl}" loading="lazy">` : `<div class="card-photo-ph">${name[0]}</div>`}
       <div class="card-body">
         <div class="card-name">${name}</div>
         <div class="card-meta">
@@ -557,9 +626,11 @@ function sectionHdr(title) {
   return `<div style="font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:0.8px;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid #f0fdfa">${title}</div>`;
 }
 
-function openHelper(id) {
+async function openHelper(id) {
   const h = allHelpers.find(x => x.id === id);
   if (!h) return;
+  // biodata bucket is PRIVATE — resolve the stored value up front.
+  const helperPhotoUrl = h.photo_url ? await resolveStorageUrl('biodata', h.photo_url, 3600) : null;
   const name = toTitle(h.full_name) || '—';
   const isActive = h.status === 'active';
   const skills = ['1','2','3','4','5','N.A'];
@@ -573,7 +644,7 @@ function openHelper(id) {
   <div style="background:#fff;border-radius:18px;max-width:640px;width:100%;margin:20px auto;box-shadow:0 24px 64px rgba(0,0,0,0.25);overflow:hidden">
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0A1628,#1E3A5F);padding:20px 24px;display:flex;align-items:center;gap:16px">
-      ${h.photo_url ? `<img src="${h.photo_url}" style="width:70px;height:90px;object-fit:cover;object-position:top;border-radius:10px;flex-shrink:0;border:2px solid rgba(255,255,255,0.2)">` : `<div style="width:70px;height:90px;border-radius:10px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:36px;color:rgba(255,255,255,0.5)">${name[0]}</div>`}
+      ${helperPhotoUrl ? `<img src="${helperPhotoUrl}" style="width:70px;height:90px;object-fit:cover;object-position:top;border-radius:10px;flex-shrink:0;border:2px solid rgba(255,255,255,0.2)">` : `<div style="width:70px;height:90px;border-radius:10px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:36px;color:rgba(255,255,255,0.5)">${name[0]}</div>`}
       <div style="flex:1">
         <div style="color:#fff;font-size:18px;font-weight:700">${name}</div>
         <div style="color:#94a3b8;font-size:12px;margin-top:4px">${toTitle(h.nationality)||''} • ${calcAge(h.dob) ? calcAge(h.dob)+' yrs' : ''}</div>

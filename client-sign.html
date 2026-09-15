@@ -892,17 +892,39 @@ async function submitSignature() {
 
       const finalBytes = await pdfDoc.save();
 
-      // Upload final signed PDF (anon write to `documents` — deliberately
-      // untouched storage policy, see note above)
+      // Upload final signed PDF (anon write to `documents` — 2026-09 private-
+      // buckets lockdown scoped this to a create-only INSERT policy on
+      // 'signed/%'. No more overwrite: always a fresh random-suffix filename,
+      // POST (create), never PUT/upsert — a retry naturally gets a new name
+      // since the suffix is generated at call time, so it can't collide with
+      // (or be blocked by) a previous attempt's object.
       btn.textContent = '⏳ Saving document...';
       const workerName = (signingData.helper_name || 'Unknown').toUpperCase();
-      await fetch('https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/EC ' + encodeURIComponent(workerName) + '.pdf', {
-        method: 'PUT',
+      // Fresh random suffix EVERY call (not cached) — a retry after a failed
+      // upload below naturally gets a brand-new object name, so the
+      // create-only INSERT policy (signed/%) never blocks a retry.
+      const ecSuffix = (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2)));
+      const upResp = await fetch('https://lyikuogxcogsutpskdwb.supabase.co/storage/v1/object/documents/signed/EC_' + encodeURIComponent(workerName) + '_' + ecSuffix + '.pdf', {
+        method: 'POST',
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/pdf' },
         body: new Blob([finalBytes], { type: 'application/pdf' })
       });
+      if (!upResp.ok) {
+        const bodyText = await upResp.text().catch(() => '');
+        throw new Error(`Upload failed (${upResp.status}): ${bodyText.slice(0, 200) || upResp.statusText}`);
+      }
     } catch (e) {
-      console.error('EC overlay error:', e);
+      // Upload genuinely failed (network error OR a checked non-ok response
+      // above) — do NOT fall through to signing_submit below: that would burn
+      // the single-use token via signing_submit and mark the document as
+      // signed/archived even though the signed PDF was never actually saved.
+      // Re-enable the button so the user can retry (a fresh random-suffix
+      // name is generated on the next call, see ecSuffix above).
+      console.error('EC overlay/upload error:', e);
+      btn.disabled = false;
+      btn.textContent = '✍️ Submit Signature';
+      alert('Could not save the signed document. Please try again.\n\n' + (e.message || e));
+      return;
     }
     btn.textContent = '⏳ Submitting...';
   }
