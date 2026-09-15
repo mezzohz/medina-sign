@@ -945,6 +945,19 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       </div>
     </div>
 
+    <div class="sec-divider" style="margin-top:24px"><span>Refunds &amp; Insurance Payouts</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label>PayNow Mobile / NRIC <span class="req">*</span></label>
+        <input type="text" id="paynowNumber" placeholder="Mobile or NRIC registered with PayNow">
+      </div>
+      <div class="field">
+        <label>PayNow Account Name <span class="req">*</span></label>
+        <input type="text" id="paynowName" placeholder="Name shown on the PayNow account">
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px">Any insurance claims or refunds due to you will be paid via PayNow to this account.</div>
+
     <div class="field" style="margin-top:20px">
       <label>Additional Remarks</label>
       <textarea id="remarks" placeholder="Any other information for our team..."></textarea>
@@ -1067,6 +1080,10 @@ function goStep3() {
     }
   }
 
+  // PayNow payout details — required for every service (insurance claims & refunds)
+  if (!document.getElementById('paynowNumber').value.trim()) { alert('Please enter your PayNow mobile/NRIC — this is where insurance claims and refunds are paid.'); return; }
+  if (!document.getElementById('paynowName').value.trim()) { alert('Please enter the PayNow account name.'); return; }
+
   // Build review
   buildReview();
   goStep(3);
@@ -1111,6 +1128,10 @@ function buildReview() {
       rows.push(['Insurance with Rider', ri ? ri.value : '—']);
     }
   }
+
+  const pnNum = document.getElementById('paynowNumber').value.trim();
+  const pnName = document.getElementById('paynowName').value.trim();
+  rows.push(['PayNow (claims & refunds)', (pnNum || pnName) ? `${pnNum} · ${pnName}` : '—']);
 
   const remarks = document.getElementById('remarks').value;
   if (remarks) rows.push(['Remarks', remarks]);
@@ -1174,6 +1195,8 @@ async function submitOrder() {
     sponsorSpouseNric: document.getElementById('spSpouseNric')?.value || '',
     sponsorSpouseDob: document.getElementById('spSpouseDob')?.value || '',
     remarks: document.getElementById('remarks').value,
+    paynowNumber: document.getElementById('paynowNumber').value.trim(),
+    paynowName: document.getElementById('paynowName').value.trim(),
     // Staff tracking
     status: 'Pending',
     assignedTo: '',
@@ -1222,6 +1245,8 @@ async function submitOrder() {
       sponsor_spouse_dob: order.sponsorSpouseDob || '',
       remarks: [order.remarks, order.wpRenewalPeriod ? 'WP Renewal: ' + order.wpRenewalPeriod : '', order.wpInsuranceRider ? 'Insurance: ' + order.wpInsuranceRider : '', order.insuranceType ? 'Insurance Plan: ' + order.insuranceType : ''].filter(Boolean).join(' | ') || '',
       insurance_type: order.insuranceType || order.wpInsuranceRider || '',
+      paynow_number: order.paynowNumber || '',
+      paynow_name: order.paynowName || '',
       status: 'Pending',
       assigned_to: '',
       helper_name: '',
