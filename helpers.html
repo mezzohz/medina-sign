@@ -830,7 +830,11 @@ function initAiSearch() {
   if (aiInitialized) return;
   aiInitialized = true;
 
-  const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
+  // 20-10-2026: the AI reader lives on the project's own supabase.co address.
+  // The workers.dev copy gets no answer from the Jakarta staff's mobile network
+  // (XL Axiata: every upload ended in 'Failed to fetch'), while supabase.co
+  // serves them fine for login, listing, storage and deletes.
+  const CLAUDE_PROXY = 'https://lyikuogxcogsutpskdwb.supabase.co/functions/v1/claude-proxy';
   let aiSession = null;
 
   // Inject the AI panel markup — this is the ONLY place in the whole app this

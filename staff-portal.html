@@ -212,7 +212,11 @@
 <script>
 const SUPABASE_URL = 'https://lyikuogxcogsutpskdwb.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_yzGcskKcIgDsy9UeE33sUw_PiZl-DHb';
-const CLAUDE_PROXY = 'https://claude-proxy.hilmi-zdin.workers.dev';
+// 20-10-2026: the AI reader lives on the project's own supabase.co address.
+// The workers.dev copy gets no answer from the Jakarta staff's mobile network
+// (XL Axiata: every upload ended in 'Failed to fetch'), while supabase.co
+// serves them fine for login, listing, storage and deletes.
+const CLAUDE_PROXY = 'https://lyikuogxcogsutpskdwb.supabase.co/functions/v1/claude-proxy';
 const RENDER_URL   = 'https://medina-pdf-service.onrender.com';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
