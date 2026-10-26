@@ -283,6 +283,24 @@
     box-shadow: 0 0 0 3px rgba(13,115,119,0.1);
     background: #fff;
   }
+  /* pets block: the two count boxes are type=number, which the shared field rule above does not cover */
+  #petDogs, #petCats {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 15px;
+    color: var(--dark);
+    background: var(--cream);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+  #petDogs:focus, #petCats:focus {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(13,115,119,0.1);
+    background: #fff;
+  }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
 
@@ -715,6 +733,8 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
             </div>
           </div>
         </div>
+        <!-- Measles (MMR) questions — goStep2 moves #mmrBlock here for Work Permit Renewal -->
+        <div id="mmrSlotWp"></div>
       </div>
 
       <!-- Insurance type – only shown for Insurance Renewal -->
@@ -874,6 +894,110 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
             Others (please specify)
           </label>
           <input type="text" id="sleepingOther" placeholder="Please describe the sleeping arrangement" style="display:none;margin-top:4px">
+        </div>
+      </div>
+
+      <!-- Pets at home -->
+      <div class="field">
+        <label>Do you have pets at home that the helper will care for? <span class="req">*</span></label>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+            <input type="radio" name="petCare" value="No pets" onchange="togglePets()">
+            No pets
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+            <input type="radio" name="petCare" value="Yes" onchange="togglePets()">
+            Yes
+          </label>
+        </div>
+        <div id="petFields" style="display:none;margin-top:14px">
+          <div class="field-row">
+            <div class="field">
+              <label>Dogs</label>
+              <input type="number" id="petDogs" min="0" max="20" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label>Cats</label>
+              <input type="number" id="petCats" min="0" max="20" inputmode="numeric">
+            </div>
+          </div>
+          <div class="field">
+            <label>Other pets</label>
+            <input type="text" id="petOther" maxlength="200" placeholder="e.g. 2 rabbits, 1 parrot">
+          </div>
+          <div class="field">
+            <label>Care needed</label>
+            <input type="text" id="petDetails" maxlength="200" placeholder="e.g. walking twice a day, feeding, litter">
+          </div>
+        </div>
+      </div>
+
+      <!-- How the agency fee will be paid -->
+      <div class="field">
+        <label>How would you like to pay the agency fee? <span class="req">*</span></label>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+            <input type="radio" name="paymentMode" value="Upfront">
+            Upfront (full payment)
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+            <input type="radio" name="paymentMode" value="Instalment">
+            Instalment plan
+          </label>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Instalment plans are subject to approval and a signed Instalment Agreement.</div>
+      </div>
+
+      <!-- Measles (MMR) declaration — MOM rule in force since 1 Sep 2025. Hiring orders show it here; goStep2 moves
+           #mmrBlock into #mmrSlotWp for Work Permit Renewal, so every id and radio name exists only once. -->
+      <div id="mmrSlotB">
+        <div id="mmrBlock">
+          <div class="field">
+            <label>Is there any child below 7 years old living in the household? <span class="req">*</span></label>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+              <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                <input type="radio" name="mmrChild" value="No" onchange="toggleMmr()">
+                No
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                <input type="radio" name="mmrChild" value="Yes" onchange="toggleMmr()">
+                Yes
+              </label>
+            </div>
+          </div>
+          <div class="field hidden" id="mmrVaccinatedField">
+            <label>Are all children below 7 fully vaccinated against measles (2 MMR doses)? <span class="req">*</span></label>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+              <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                <input type="radio" name="mmrVaccinated" value="Yes" onchange="toggleMmr()">
+                Yes
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                <input type="radio" name="mmrVaccinated" value="No" onchange="toggleMmr()">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="sponsor-box" id="mmrNote">
+            <div class="sponsor-sub" style="font-size:13px;line-height:1.6;color:var(--mid)">MOM requires the helper to be immune to measles, or to have a vaccination appointment booked, before her Work Permit is issued or renewed: two MMR doses at least 28 days apart, a serology test, or proof of past infection. Vaccination and test costs are borne by the employer. Medina can arrange the vaccination or test.</div>
+            <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--dark);cursor:pointer">
+              <input type="checkbox" id="mmrAck">
+              <span>I understand and agree. <span class="req" style="color:var(--error)">*</span></span>
+            </label>
+            <div class="field" style="margin:18px 0 0">
+              <label>If the helper is not yet immune, would you like Medina to arrange her first MMR jab? <span class="req">*</span></label>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+                <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="mmrJab" value="Yes">
+                  Yes, please arrange it (cost borne by the employer)
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="mmrJab" value="No">
+                  No, I will arrange it myself
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1043,6 +1167,14 @@ function goStep2() {
   document.getElementById('insuranceTypeField').classList.toggle('hidden', selectedService !== 'Insurance Renewal');
   // Show WP renewal options only for Work Permit Renewal
   document.getElementById('wpRenewalField').classList.toggle('hidden', selectedService !== 'Work Permit Renewal');
+  // Measles (MMR) questions: one set of fields, under the household block for hiring orders and under the renewal
+  // details for Work Permit Renewal (moving the block keeps every id and radio name unique)
+  const mmrSlot = document.getElementById(selectedService === 'Work Permit Renewal' ? 'mmrSlotWp' : 'mmrSlotB');
+  const mmrBlock = document.getElementById('mmrBlock');
+  if (mmrBlock.parentNode !== mmrSlot) mmrSlot.appendChild(mmrBlock);
+  // Re-sync the conditional fields with any answers the browser restored without firing change events
+  togglePets();
+  toggleMmr();
 
   document.getElementById('step2Title').textContent = selectedService;
   document.getElementById('step2Sub').textContent = isGroupB
@@ -1066,6 +1198,9 @@ function goStep3() {
     if (!document.getElementById('bEmpPhone').value.trim()) { alert('Please enter HP number.'); return; }
     if (!document.getElementById('bEmpEmail').value.trim()) { alert('Please enter email address.'); return; }
     if (!document.getElementById('bIncome').value.trim()) { alert('Please enter combined gross income.'); return; }
+    if (!document.querySelector('input[name="petCare"]:checked')) { alert('Please tell us whether you have pets at home.'); return; }
+    if (!getPets().care) { alert('Please tell us how many dogs or cats you have, or describe your other pets.'); return; }
+    if (!document.querySelector('input[name="paymentMode"]:checked')) { alert('Please choose how you would like to pay the agency fee.'); return; }
   } else {
     if (!document.getElementById('aEmpName').value.trim()) { alert('Please enter employer name.'); return; }
     if (!document.getElementById('aEmpNric').value.trim()) { alert('Please enter employer NRIC.'); return; }
@@ -1078,6 +1213,12 @@ function goStep3() {
       if (!document.querySelector('input[name="wpRenewalPeriod"]:checked')) { alert('Please select a renewal period (1 Year or 2 Years).'); return; }
       if (!document.querySelector('input[name="wpInsuranceRider"]:checked')) { alert('Please indicate whether you want insurance with rider.'); return; }
     }
+  }
+
+  // Measles (MMR) questions — asked for hiring orders and Work Permit Renewal
+  if (isGroupB || selectedService === 'Work Permit Renewal') {
+    const mmrMsg = mmrProblem();
+    if (mmrMsg) { alert(mmrMsg); return; }
   }
 
   // PayNow payout details — required for every service (insurance claims & refunds)
@@ -1105,6 +1246,9 @@ function buildReview() {
     rows.push(['Spouse Name', document.getElementById('bSpouseName').value || '—']);
     rows.push(['Spouse NRIC', document.getElementById('bSpouseNric').value || '—']);
     rows.push(['Combined Income', document.getElementById('bIncome').value ? `$${document.getElementById('bIncome').value}/month` : '—']);
+    rows.push(['Pets', petReviewText()]);
+    rows.push(['Payment', PAYMENT_LABELS[getPaymentMode()] || '—']);
+    rows.push(['Measles (MMR)', mmrReviewText()]);
 
     if (document.getElementById('h2').checked) {
       rows.push(['Sponsor Name', document.getElementById('spName').value || '—']);
@@ -1126,6 +1270,7 @@ function buildReview() {
       const ri = document.querySelector('input[name="wpInsuranceRider"]:checked');
       rows.push(['Renewal Period', wp ? wp.value : '—']);
       rows.push(['Insurance with Rider', ri ? ri.value : '—']);
+      rows.push(['Measles (MMR)', mmrReviewText()]);
     }
   }
 
@@ -1145,6 +1290,8 @@ async function submitOrder() {
   const ref = 'MRC-' + new Date().getFullYear() + '-' + Math.floor(10000 + Math.random() * 90000);
   const ht = document.querySelector('input[name="hiringType"]:checked');
   const it = document.querySelector('input[name="insuranceType"]:checked');
+  const petAnswer = getPets();
+  const mmr = getMmr();
 
   // Collect family members
   const family = [];
@@ -1182,6 +1329,12 @@ async function submitOrder() {
     windowGrilles: document.getElementById('bWindowGrilles')?.value || '',
     exteriorCleaning: document.getElementById('bExteriorCleaning')?.value || '',
     sleepingArrangement: getSleepingArrangement(),
+    petCare: petAnswer.care,
+    pets: petAnswer.pets,
+    paymentMode: getPaymentMode(),
+    mmrStatus: mmr.status,
+    mmrAck: mmr.ack,
+    mmrJabByMedina: mmr.jab,
     income: document.getElementById('bIncome')?.value || '',
     family,
     // Sponsor
@@ -1232,6 +1385,14 @@ async function submitOrder() {
       window_grilles: order.windowGrilles || '',
       exterior_cleaning: order.exteriorCleaning || '',
       sleeping_arrangement: order.sleepingArrangement || '',
+      // NULL (not '') when the question was not asked: pets (jsonb object), payment_mode, mmr_status and
+      // mmr_jab_by_medina have CHECK constraints. pets goes as an object, never JSON.stringify'd (a string is not an object).
+      pet_care: order.petCare || null,
+      pets: order.pets || null,
+      payment_mode: order.paymentMode || null,
+      mmr_status: order.mmrStatus || null,
+      mmr_ack: order.mmrAck === true,
+      mmr_jab_by_medina: order.mmrJabByMedina || null,
       income: order.income || '',
       family: JSON.stringify(order.family || []),
       sponsor_name: order.sponsorName || '',
@@ -1312,6 +1473,117 @@ function getSleepingArrangement() {
     return document.getElementById('sleepingOther').value.trim() || 'Others';
   }
   return selected.value;
+}
+
+// ---- PETS / PAYMENT / MEASLES (MMR) ----
+// Pets and payment are asked for hiring orders only; the MMR questions for hiring orders and Work Permit Renewal.
+// A question that was not asked stores nothing (NULL in the database, mmr_ack false).
+const PAYMENT_LABELS = { 'Upfront': 'Upfront (full payment)', 'Instalment': 'Instalment plan' };
+
+function togglePets() {
+  const sel = document.querySelector('input[name="petCare"]:checked');
+  const show = !!sel && sel.value === 'Yes';
+  document.getElementById('petFields').style.display = show ? 'block' : 'none';
+  if (!show) ['petDogs', 'petCats', 'petOther', 'petDetails'].forEach(id => { document.getElementById(id).value = ''; });
+}
+
+// A whole number from 0 to 20 (what the box allows); anything else counts as 0
+function toPetCount(id) {
+  const n = Math.floor(Number(document.getElementById(id).value));
+  return Number.isFinite(n) ? Math.min(20, Math.max(0, n)) : 0;
+}
+
+// "2 dogs, 1 cat" / "1 dog; other: 2 rabbits" / "other: 2 rabbits"
+function petSummary(p) {
+  const counts = [];
+  if (p.dogs > 0) counts.push(p.dogs + (p.dogs === 1 ? ' dog' : ' dogs'));
+  if (p.cats > 0) counts.push(p.cats + (p.cats === 1 ? ' cat' : ' cats'));
+  const text = counts.join(', ');
+  if (!p.other) return text;
+  return (text ? text + '; ' : '') + 'other: ' + p.other;
+}
+
+// The pets answer. care is the text stored in orders.pet_care and pets the structure stored in orders.pets (NULL for
+// "No pets"). care is '' when pets were not asked, no option was chosen, or "Yes" came without a dog, cat or other pet.
+function getPets() {
+  const sel = isGroupB ? document.querySelector('input[name="petCare"]:checked') : null;
+  if (!sel) return { care: '', pets: null };
+  if (sel.value !== 'Yes') return { care: 'No pets', pets: null };
+  const pets = {
+    dogs: toPetCount('petDogs'),
+    cats: toPetCount('petCats'),
+    other: document.getElementById('petOther').value.trim(),
+    details: document.getElementById('petDetails').value.trim()
+  };
+  return { care: petSummary(pets), pets };
+}
+
+function getPaymentMode() {
+  if (!isGroupB) return '';
+  return document.querySelector('input[name="paymentMode"]:checked')?.value || '';
+}
+
+function toggleMmr() {
+  const child = document.querySelector('input[name="mmrChild"]:checked');
+  const askVaccinated = !!child && child.value === 'Yes';
+  document.getElementById('mmrVaccinatedField').classList.toggle('hidden', !askVaccinated);
+  if (!askVaccinated) document.querySelectorAll('input[name="mmrVaccinated"]').forEach(r => { r.checked = false; });
+  const vacc = document.querySelector('input[name="mmrVaccinated"]:checked');
+  const showNote = askVaccinated && !!vacc && vacc.value === 'No';
+  document.getElementById('mmrNote').classList.toggle('show', showNote);
+  if (!showNote) {
+    document.getElementById('mmrAck').checked = false;
+    document.querySelectorAll('input[name="mmrJab"]').forEach(r => { r.checked = false; });
+  }
+}
+
+// First problem with the MMR answers, or '' when they are complete.
+function mmrProblem() {
+  const child = document.querySelector('input[name="mmrChild"]:checked');
+  if (!child) return 'Please tell us whether there is a child below 7 years old living in the household.';
+  if (child.value !== 'Yes') return '';
+  const vacc = document.querySelector('input[name="mmrVaccinated"]:checked');
+  if (!vacc) return 'Please tell us whether all children below 7 are fully vaccinated against measles.';
+  if (vacc.value === 'Yes') return '';
+  if (!document.getElementById('mmrAck').checked) return 'Please tick the box to confirm you understand the measles (MMR) requirement.';
+  if (!document.querySelector('input[name="mmrJab"]:checked')) return 'Please tell us whether you would like Medina to arrange her first MMR jab.';
+  return '';
+}
+
+// The MMR answers as stored: status is one of the three orders.mmr_status values; ack is true and jab is 'Yes'/'No' only when
+// the box with the checkbox and the jab question was shown (children under 7 who are not all fully vaccinated).
+function getMmr() {
+  const none = { status: '', ack: false, jab: '' };
+  if (!(isGroupB || selectedService === 'Work Permit Renewal')) return none;
+  const child = document.querySelector('input[name="mmrChild"]:checked');
+  if (!child) return none;
+  if (child.value !== 'Yes') return { status: 'No child under 7', ack: false, jab: '' };
+  const vacc = document.querySelector('input[name="mmrVaccinated"]:checked');
+  if (!vacc) return none;
+  if (vacc.value === 'Yes') return { status: 'Children under 7, all vaccinated', ack: false, jab: '' };
+  const jab = document.querySelector('input[name="mmrJab"]:checked');
+  return {
+    status: 'Children under 7, not fully vaccinated',
+    ack: document.getElementById('mmrAck').checked,
+    jab: jab ? jab.value : ''
+  };
+}
+
+function petReviewText() {
+  const answer = getPets();
+  if (!answer.care) return '—';
+  // the other pets and care text are free text and the review table is filled through innerHTML, so escape them
+  const text = answer.care + (answer.pets && answer.pets.details ? ' – ' + answer.pets.details : '');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function mmrReviewText() {
+  const mmr = getMmr();
+  if (!mmr.status) return '—';
+  const parts = [mmr.status];
+  if (mmr.ack) parts.push('acknowledged');
+  if (mmr.jab) parts.push('first jab: ' + (mmr.jab === 'Yes' ? 'Medina' : 'own arrangement'));
+  return parts.join(' · ');
 }
 </script>
 </body>
