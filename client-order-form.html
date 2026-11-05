@@ -1087,6 +1087,38 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       <textarea id="remarks" placeholder="Any other information for our team..."></textarea>
     </div>
 
+    <!-- How the client heard about Medina (required, every service). Stored in orders.heard_from (ad|referral|returning|search|other)
+         and orders.heard_from_detail (optional free text, referral and other only). -->
+    <div class="field" style="margin-top:20px">
+      <label>How did you hear about us? <span class="req">*</span></label>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+          <input type="radio" name="heardFrom" value="ad" onchange="toggleHeardFrom()">
+          Facebook or Instagram ad
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+          <input type="radio" name="heardFrom" value="referral" onchange="toggleHeardFrom()">
+          Friend or family referred me
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+          <input type="radio" name="heardFrom" value="returning" onchange="toggleHeardFrom()">
+          I've hired from Medina before
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+          <input type="radio" name="heardFrom" value="search" onchange="toggleHeardFrom()">
+          Google or our website
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-weight:400;cursor:pointer">
+          <input type="radio" name="heardFrom" value="other" onchange="toggleHeardFrom()">
+          Other
+        </label>
+      </div>
+      <div id="heardFromDetailField" style="display:none;margin-top:10px">
+        <label id="heardFromDetailLabel" for="heardFromDetail">Who referred you?</label>
+        <input type="text" id="heardFromDetail" maxlength="200" placeholder="">
+      </div>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
       <button class="btn btn-primary" onclick="goStep3()">Review →</button>
@@ -1175,6 +1207,7 @@ function goStep2() {
   // Re-sync the conditional fields with any answers the browser restored without firing change events
   togglePets();
   toggleMmr();
+  toggleHeardFrom();
 
   document.getElementById('step2Title').textContent = selectedService;
   document.getElementById('step2Sub').textContent = isGroupB
@@ -1224,6 +1257,9 @@ function goStep3() {
   // PayNow payout details — required for every service (insurance claims & refunds)
   if (!document.getElementById('paynowNumber').value.trim()) { alert('Please enter your PayNow mobile/NRIC — this is where insurance claims and refunds are paid.'); return; }
   if (!document.getElementById('paynowName').value.trim()) { alert('Please enter the PayNow account name.'); return; }
+
+  // How did you hear about us? — required for every service
+  if (!getHeardFrom().value) { alert('Please tell us how you heard about us.'); return; }
 
   // Build review
   buildReview();
@@ -1280,6 +1316,7 @@ function buildReview() {
 
   const remarks = document.getElementById('remarks').value;
   if (remarks) rows.push(['Remarks', remarks]);
+  rows.push(['Heard about us', heardFromReviewText()]);
 
   document.getElementById('reviewTable').innerHTML = rows.map(([k,v]) =>
     `<tr><td>${k}</td><td>${v}</td></tr>`
@@ -1292,6 +1329,7 @@ async function submitOrder() {
   const it = document.querySelector('input[name="insuranceType"]:checked');
   const petAnswer = getPets();
   const mmr = getMmr();
+  const heardAnswer = getHeardFrom();
 
   // Collect family members
   const family = [];
@@ -1335,6 +1373,8 @@ async function submitOrder() {
     mmrStatus: mmr.status,
     mmrAck: mmr.ack,
     mmrJabByMedina: mmr.jab,
+    heardFrom: heardAnswer.value,
+    heardFromDetail: heardAnswer.detail,
     income: document.getElementById('bIncome')?.value || '',
     family,
     // Sponsor
@@ -1393,6 +1433,9 @@ async function submitOrder() {
       mmr_status: order.mmrStatus || null,
       mmr_ack: order.mmrAck === true,
       mmr_jab_by_medina: order.mmrJabByMedina || null,
+      // heard_from is one of five fixed values (CHECK-constrained) and heard_from_detail optional text; NULL (not '') when empty
+      heard_from: order.heardFrom || null,
+      heard_from_detail: order.heardFromDetail || null,
       income: order.income || '',
       family: JSON.stringify(order.family || []),
       sponsor_name: order.sponsorName || '',
@@ -1584,6 +1627,46 @@ function mmrReviewText() {
   if (mmr.ack) parts.push('acknowledged');
   if (mmr.jab) parts.push('first jab: ' + (mmr.jab === 'Yes' ? 'Medina' : 'own arrangement'));
   return parts.join(' · ');
+}
+
+// ---- HOW DID YOU HEAR ABOUT US ----
+// The five values orders.heard_from may hold, with the label shown in the review. Only these can be saved.
+const HEARD_FROM_LABELS = {
+  ad: 'Facebook or Instagram ad',
+  referral: 'Friend or family referred me',
+  returning: "I've hired from Medina before",
+  search: 'Google or our website',
+  other: 'Other'
+};
+const HEARD_FROM_DETAIL_MAX = 200;
+// Only these two answers take the optional text box, with the label that goes above it
+const HEARD_FROM_DETAIL_LABELS = { referral: 'Who referred you?', other: 'Please tell us where' };
+
+function toggleHeardFrom() {
+  const sel = document.querySelector('input[name="heardFrom"]:checked');
+  const label = sel ? HEARD_FROM_DETAIL_LABELS[sel.value] : '';
+  document.getElementById('heardFromDetailField').style.display = label ? 'block' : 'none';
+  if (label) document.getElementById('heardFromDetailLabel').textContent = label;
+  else document.getElementById('heardFromDetail').value = '';
+}
+
+// The answer as stored: value is one of the five keys above ('' when nothing valid is chosen); detail is the trimmed text
+// (at most 200 characters) for referral and other only, '' otherwise.
+function getHeardFrom() {
+  const sel = document.querySelector('input[name="heardFrom"]:checked');
+  const value = sel && Object.prototype.hasOwnProperty.call(HEARD_FROM_LABELS, sel.value) ? sel.value : '';
+  if (!value || !HEARD_FROM_DETAIL_LABELS[value]) return { value, detail: '' };
+  // Array.from cuts by whole characters: slicing the string could halve an emoji, and Postgres would refuse the whole order
+  const detail = Array.from(document.getElementById('heardFromDetail').value.trim()).slice(0, HEARD_FROM_DETAIL_MAX).join('').trim();
+  return { value, detail };
+}
+
+function heardFromReviewText() {
+  const answer = getHeardFrom();
+  if (!answer.value) return '—';
+  // the detail is free text and the review table is filled through innerHTML, so escape it
+  const text = HEARD_FROM_LABELS[answer.value] + (answer.detail ? ' – ' + answer.detail : '');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 </script>
 </body>
