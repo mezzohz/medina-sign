@@ -227,7 +227,7 @@
     </select>
     <div class="count-badge" id="resultCount"></div>
     <!-- Build stamp — bump on every helpers.html change so screenshots show which version is loaded. -->
-    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.07.11-access</div>
+    <div style="font-size:10px;color:#94a3b8;margin-left:8px" title="Portal build version">v2026.11.16-hide</div>
     <!-- Region filter chips — populated live from loaded data by renderRegionChips(). -->
     <div class="region-chip-row" id="regionChipRow"></div>
   </div>
@@ -235,10 +235,12 @@
   <!-- ADMIN BULK BAR (admin only) -->
   <div id="adminBar" style="display:none;padding:10px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;align-items:center;gap:10px;flex-wrap:wrap">
     <button onclick="toggleManageMode()" id="manageBtn" style="padding:8px 16px;border-radius:8px;border:1.5px solid #c2410c;background:#fff;color:#c2410c;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">☑ Manage Profiles</button>
+    <button onclick="toggleShowHidden()" id="hiddenToggleBtn" style="padding:8px 16px;border-radius:8px;border:1.5px solid #475569;background:#fff;color:#475569;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Hidden (0)</button>
     <div id="bulkActions" style="display:none;align-items:center;gap:10px">
       <button onclick="selectAllHelpers()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--dark);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Select All</button>
       <button onclick="deselectAllHelpers()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--dark);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Deselect All</button>
       <span id="selectedCount" style="font-size:13px;color:var(--muted);font-weight:600">0 selected</span>
+      <button onclick="hideSelected()" id="hideSelectedBtn" style="padding:8px 18px;border-radius:8px;border:none;background:#475569;color:#fff;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;opacity:0.4" disabled>🙈 Hide selected</button>
       <button onclick="deleteSelected()" id="deleteSelectedBtn" style="padding:8px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;cursor:pointer;opacity:0.4" disabled>🗑 Delete Selected</button>
       <button onclick="toggleManageMode()" style="padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">Cancel</button>
     </div>
@@ -256,6 +258,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let allHelpers = [];
 let manageMode = false;
 let selectedIds = new Set();
+let hiddenHelpers = [];   // admin only: staff-hidden cards (status inactive + availability_mode manual)
+let showHidden = false;   // admin only: grid shows hiddenHelpers instead of allHelpers
 let selectedRegions = new Set();
 let aiResults = null;       // shared with renderHelpers()'s AI-match filter/sort; populated only if initAiSearch() runs
 let accessToken = null;     // client-mode credentials — JS MEMORY ONLY (CA-D6), never localStorage
@@ -409,6 +413,12 @@ async function loadHelpersAdmin() {
   if (error) { console.error(error); return; }
   allHelpers = data || [];
   document.getElementById('adminBar').style.display = 'flex';
+  // Staff-hidden cards only; cards the supplier sync took down (availability_mode auto) are not listed.
+  const hid = await sb.from('portal_helpers')
+    .select('*').eq('status', 'inactive').eq('availability_mode', 'manual').is('auto_inactive_reason', null).order('created_at', { ascending: false });
+  if (hid.error) console.error(hid.error);
+  hiddenHelpers = hid.data || [];
+  updateHiddenCount();
   renderHelpers();
 }
 
@@ -490,7 +500,8 @@ function renderHelpers() {
   const exp = document.getElementById('filterExp')?.value || '';
   const heightMin = parseInt(document.getElementById('filterHeightMin')?.value) || null;
 
-  let filtered = allHelpers.filter(h => {
+  let filtered = (showHidden ? hiddenHelpers : allHelpers).filter(h => {
+    if (showHidden) return true; // Hidden view lists every staff-hidden card; filters are muted
     if (aiResults && !aiResults[h.id]) return false;
     if (search && !(h.full_name||'').toLowerCase().includes(search) &&
         !(h.fdw_code||'').toLowerCase().includes(search) &&
@@ -540,7 +551,7 @@ function renderHelpers() {
   // folded into the block above) so the "hidden by region filter" null-region
   // count can be derived from the same pre-region-filter set.
   let regionHiddenNullCount = 0;
-  if (selectedRegions.size) {
+  if (selectedRegions.size && !showHidden) {
     regionHiddenNullCount = filtered.filter(h => !(h.region || '').trim()).length;
     filtered = filtered.filter(h => selectedRegions.has((h.region || '').trim()));
   }
@@ -557,7 +568,7 @@ function renderHelpers() {
     }
   }
 
-  if (aiResults) {
+  if (aiResults && !showHidden) {
     filtered.sort((a, b) => (aiResults[a.id]?.rank || 999) - (aiResults[b.id]?.rank || 999));
   }
 
@@ -600,7 +611,7 @@ function renderHelpers() {
           ${parseInt(h.skill_infant) >= 3 ? `<span class="tag tag-skill">Child Care</span>` : ''}
           ${parseInt(h.skill_cooking) >= 3 ? `<span class="tag tag-skill">Cooking</span>` : ''}
           ${parseInt(h.skill_housework) >= 3 ? `<span class="tag tag-skill">Housework</span>` : ''}
-          <span class="tag tag-avail">Available</span>
+          ${showHidden ? `<span class="tag" style="background:#e2e8f0;color:#475569">Hidden</span>` : `<span class="tag tag-avail">Available</span>`}
         </div>
         ${aiResults && aiResults[h.id] ? `<div class="ai-match ${aiResults[h.id].score >= 80 ? 'ai-match-high' : aiResults[h.id].score >= 60 ? 'ai-match-med' : 'ai-match-low'}">#${aiResults[h.id].rank} — ${aiResults[h.id].reason}</div>` : ''}
       </div>
@@ -609,7 +620,7 @@ function renderHelpers() {
 }
 
 function openProfile(id) {
-  const h = allHelpers.find(x => x.id === id);
+  const h = allHelpers.find(x => x.id === id) || (isAdmin ? hiddenHelpers.find(x => x.id === id) : null);
   if (!h) return;
   const age = calcAge(h.dob);
   const name = toTitle(h.full_name) || '—';
@@ -648,7 +659,7 @@ function openProfile(id) {
           <div class="profile-info-tags">
             <span class="tag tag-nat">${nat}</span>
             ${age ? `<span class="tag tag-age">${age} years old</span>` : ''}
-            <span class="tag tag-avail">Available</span>
+            ${h.status === 'inactive' ? `<span class="tag" style="background:#e2e8f0;color:#475569">Hidden</span>` : `<span class="tag tag-avail">Available</span>`}
           </div>
         </div>
       </div>
@@ -709,6 +720,9 @@ function openProfile(id) {
       <div class="profile-actions">
         ${h.biodata_pdf ? `<button class="btn-download" onclick="window.open('${SUPABASE_URL}/storage/v1/object/public/biodata/${h.biodata_pdf}','_blank')">📄 Download Biodata</button>` : ''}
         <button class="btn-enquire" onclick="window.open('https://wa.me/6593409067?text=Hi%20Medina,%20I%20am%20interested%20in%20helper%20${encodeURIComponent(toTitle(h.full_name)||'')}%20(${h.fdw_code||''}).%20Please%20share%20more%20details.','_blank')">💬 Enquire via WhatsApp</button>
+        ${isAdmin ? (h.status === 'inactive'
+          ? `<button class="btn-delete" style="background:#dcfce7;color:#166534" onclick="unhidePortalHelper('${h.id}')">👁 Unhide</button>`
+          : `<button class="btn-delete" style="background:#e2e8f0;color:#475569" onclick="hidePortalHelper('${h.id}')">🙈 Hide</button>`) : ''}
         ${isAdmin ? `<button class="btn-delete" onclick="deletePortalHelper('${h.id}','${(h.full_name||'').replace(/'/g,"\\'")}')">🗑 Delete</button>` : ''}
       </div>
     </div>`;
@@ -738,6 +752,7 @@ function toggleSelect(id) {
   const btn = document.getElementById('deleteSelectedBtn');
   btn.disabled = count === 0;
   btn.style.opacity = count === 0 ? '0.4' : '1';
+  syncHideBtn();
   renderHelpers();
 }
 
@@ -754,6 +769,7 @@ function selectAllHelpers() {
   const btn = document.getElementById('deleteSelectedBtn');
   btn.disabled = count === 0;
   btn.style.opacity = count === 0 ? '0.4' : '1';
+  syncHideBtn();
   renderHelpers();
 }
 
@@ -763,6 +779,7 @@ function deselectAllHelpers() {
   const btn = document.getElementById('deleteSelectedBtn');
   btn.disabled = true;
   btn.style.opacity = '0.4';
+  syncHideBtn();
   renderHelpers();
 }
 
@@ -779,8 +796,127 @@ async function deleteSelected() {
   const { error } = await sb.from('portal_helpers').delete().in('id', ids);
   if (error) { alert('Failed: ' + error.message); btn.textContent = '🗑 Delete Selected'; btn.disabled = false; return; }
   allHelpers = allHelpers.filter(h => !ids.includes(h.id));
+  hiddenHelpers = hiddenHelpers.filter(h => !ids.includes(h.id));
+  updateHiddenCount();
   selectedIds.clear();
   toggleManageMode();
+}
+
+// ── ADMIN HIDE / UNHIDE ─────────────────────────────────────────────────
+// Hiding sets status inactive AND availability_mode manual so the supplier
+// sync (which only touches 'auto' cards) can never put the card back up.
+function updateHiddenCount() {
+  const b = document.getElementById('hiddenToggleBtn');
+  if (!b) return;
+  b.textContent = (showHidden ? '← Back to profiles · ' : '') + 'Hidden (' + hiddenHelpers.length + ')';
+  b.style.background = showHidden ? '#475569' : '#fff';
+  b.style.color = showHidden ? '#fff' : '#475569';
+}
+
+function syncHideBtn() {
+  const b = document.getElementById('hideSelectedBtn');
+  if (!b) return;
+  b.disabled = selectedIds.size === 0;
+  b.style.opacity = selectedIds.size === 0 ? '0.4' : '1';
+}
+
+function toggleShowHidden() {
+  if (manageMode) toggleManageMode();
+  showHidden = !showHidden;
+  updateHiddenCount();
+  const mb = document.getElementById('manageBtn');
+  if (mb) mb.style.display = showHidden ? 'none' : 'inline-block';
+  ['aiPanel', 'regionChipRow'].forEach(id => muteEl(document.getElementById(id), showHidden));
+  document.querySelectorAll('.filters').forEach(el => muteEl(el, showHidden));
+  renderHelpers();
+}
+
+// Visually mute and disable a filter area while the Hidden view is showing
+// (that view ignores filters, so they must not look live).
+function muteEl(el, on) {
+  if (!el) return;
+  el.style.opacity = on ? '0.4' : '';
+  el.style.pointerEvents = on ? 'none' : '';
+}
+
+const unhideInFlight = new Set();
+
+function closeProfileOverlay() {
+  const overlay = document.querySelector('.profile-overlay');
+  if (overlay) overlay.remove();
+}
+
+async function hideHelpersByIds(ids) {
+  const { error } = await sb.from('portal_helpers')
+    .update({ status: 'inactive', availability_mode: 'manual' }).in('id', ids);
+  if (error) { alert('Failed: ' + error.message); return false; }
+  const moved = allHelpers.filter(h => ids.includes(h.id))
+    .map(h => ({ ...h, status: 'inactive', availability_mode: 'manual' }));
+  allHelpers = allHelpers.filter(h => !ids.includes(h.id));
+  hiddenHelpers = [...moved, ...hiddenHelpers];
+  updateHiddenCount();
+  return true;
+}
+
+async function hidePortalHelper(id) {
+  if (!isAdmin) return;
+  const h = allHelpers.find(x => x.id === id);
+  if (!h) return;
+  const name = toTitle(h.full_name) || id;
+  if (!confirm('Hide ' + name + ' from the portal?\n\nShe stays hidden even if a supplier sync lists her. You can unhide her later.')) return;
+  if (!(await hideHelpersByIds([id]))) return;
+  closeProfileOverlay();
+  renderHelpers();
+  alert('Hidden: ' + name);
+}
+
+async function hideSelected() {
+  if (!isAdmin || selectedIds.size === 0) return;
+  const ids = [...selectedIds];
+  const names = ids.map(id => {
+    const h = allHelpers.find(x => x.id === id);
+    return h ? toTitle(h.full_name) : id;
+  });
+  if (!confirm('Hide ' + ids.length + ' helper(s)?\n\n' + names.join('\n') + '\n\nThey stay hidden even if a supplier sync lists them.')) return;
+  const btn = document.getElementById('hideSelectedBtn');
+  btn.textContent = 'Hiding...'; btn.disabled = true;
+  const ok = await hideHelpersByIds(ids);
+  btn.textContent = '🙈 Hide selected';
+  if (!ok) { syncHideBtn(); return; }
+  selectedIds.clear();
+  document.getElementById('selectedCount').textContent = '0 selected';
+  const delBtn = document.getElementById('deleteSelectedBtn');
+  delBtn.disabled = true; delBtn.style.opacity = '0.4';
+  syncHideBtn();
+  toggleManageMode();
+  alert('Hidden: ' + names.join(', '));
+}
+
+async function unhidePortalHelper(id) {
+  if (!isAdmin) return;
+  const h = hiddenHelpers.find(x => x.id === id);
+  if (!h) return;
+  const name = toTitle(h.full_name) || id;
+  if (unhideInFlight.has(id)) return;
+  if (!confirm('Unhide ' + name + '? She will show on the portal again.')) return;
+  if (unhideInFlight.has(id) || !hiddenHelpers.some(x => x.id === id)) return;
+  unhideInFlight.add(id);
+  const ubtn = document.querySelector('.profile-overlay .btn-delete[onclick^="unhidePortalHelper"]');
+  if (ubtn) { ubtn.disabled = true; ubtn.textContent = 'Unhiding...'; }
+  const mode = (h.source_group || h.availability_source) ? 'auto' : 'manual';
+  const { error } = await sb.from('portal_helpers')
+    .update({ status: 'active', availability_mode: mode }).eq('id', id);
+  unhideInFlight.delete(id);
+  if (error) {
+    if (ubtn) { ubtn.disabled = false; ubtn.textContent = '👁 Unhide'; }
+    alert('Failed: ' + error.message); return;
+  }
+  hiddenHelpers = hiddenHelpers.filter(x => x.id !== id);
+  allHelpers = [{ ...h, status: 'active', availability_mode: mode }, ...allHelpers];
+  updateHiddenCount();
+  closeProfileOverlay();
+  renderHelpers();
+  alert('Unhidden: ' + name + (mode === 'auto' ? ". Her supplier's availability now decides whether she shows." : '. She shows on the portal again.'));
 }
 
 // ── REGION FILTER CHIPS ──────────────────────────────────────────────────
@@ -1290,6 +1426,8 @@ async function deletePortalHelper(id, name) {
   const { error } = await sb.from('portal_helpers').delete().eq('id', id);
   if (error) { alert('Failed: ' + error.message); return; }
   allHelpers = allHelpers.filter(h => h.id !== id);
+  hiddenHelpers = hiddenHelpers.filter(h => h.id !== id);
+  updateHiddenCount();
   renderHelpers();
   const overlay = document.querySelector('.profile-overlay');
   if (overlay) overlay.remove();
